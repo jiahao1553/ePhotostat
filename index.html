@@ -98,10 +98,19 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 /* ═══════════════════════════════════════════
    CROP MODAL
 ═══════════════════════════════════════════ */
-#crop-modal{display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.88);flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;}
+#crop-modal{display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.88);flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;}
 #crop-modal.open{display:flex;}
 #crop-hint{color:rgba(255,255,255,.7);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.5px;text-align:center;}
 #crop-canvas{display:block;cursor:crosshair;touch-action:none;border-radius:2px;}
+#crop-rot-bar{display:flex;align-items:center;gap:8px;width:min(100%,520px);}
+#rot-slider{flex:1;accent-color:var(--accent);}
+#rot-display{font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,255,255,.6);min-width:38px;text-align:center;}
+.rot-btn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:4px;padding:5px 9px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;}
+.rot-btn:hover{background:rgba(255,255,255,.22);}
+#crop-opts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
+.crop-opt{border:1px solid rgba(255,255,255,.22);background:transparent;color:rgba(255,255,255,.7);border-radius:20px;padding:6px 14px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
+.crop-opt:hover{background:rgba(255,255,255,.12);color:#fff;}
+.crop-opt.on{background:var(--accent);border-color:var(--accent);color:#fff;}
 #crop-footer{display:flex;gap:12px;}
 #crop-cancel-btn,#crop-confirm-btn{border:none;border-radius:5px;padding:10px 28px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;}
 #crop-cancel-btn{background:rgba(255,255,255,.15);color:#fff;}
@@ -180,6 +189,17 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 <div id="crop-modal">
   <div id="crop-hint">Drag to reposition · Drag corners to resize</div>
   <canvas id="crop-canvas"></canvas>
+  <div id="crop-rot-bar">
+    <button class="rot-btn" onclick="nudgeCropRot(-5)">−5°</button>
+    <input type="range" id="rot-slider" min="-45" max="45" value="0" step="1" oninput="setCropRot(+this.value)">
+    <button class="rot-btn" onclick="nudgeCropRot(5)">+5°</button>
+    <span id="rot-display">0°</span>
+    <button class="rot-btn" onclick="setCropRot(0)" title="Reset rotation">↺</button>
+  </div>
+  <div id="crop-opts">
+    <button id="opt-round" class="crop-opt" onclick="toggleCropOpt('roundedCorners','opt-round')">⌒ Rounded corners</button>
+    <button id="opt-rmbg"  class="crop-opt" onclick="toggleCropOpt('removeBg','opt-rmbg')">✦ Remove background</button>
+  </div>
   <div id="crop-footer">
     <button id="crop-cancel-btn" onclick="closeCropModal()">Cancel</button>
     <button id="crop-confirm-btn" onclick="applyCrop()">Use Crop</button>
@@ -350,51 +370,92 @@ const CARD_ASPECT = 85.6 / 54;
 const HANDLE_R    = 12; // hit radius for corner handles in canvas px
 
 const crop = {
-  img: null, imgW: 0, imgH: 0,
+  img: null, origImg: null, imgW: 0, imgH: 0,
   x: 0, y: 0, w: 0, h: 0, // crop rect in image pixel coords
   side: null,
-  drag: null,       // null | 'move' | 'tl' | 'tr' | 'bl' | 'br'
-  dragStart: null
+  drag: null, dragStart: null,
+  rotation: 0, roundedCorners: false, removeBg: false,
 };
 
 function openCropModal(dataUrl, side) {
   const img = new Image();
   img.onload = () => {
-    crop.img  = img;
-    crop.imgW = img.width;
-    crop.imgH = img.height;
-    crop.side = side;
-
-    // Size canvas to fit viewport, preserving image aspect
-    const maxW = Math.min(window.innerWidth - 32, 860);
-    const maxH = window.innerHeight - 140;
-    const ia   = img.width / img.height;
-    let cW = maxW, cH = maxW / ia;
-    if (cH > maxH) { cH = maxH; cW = maxH * ia; }
-    cropCanvas.width  = Math.round(cW);
-    cropCanvas.height = Math.round(cH);
-
-    // Initial crop: 85% of image, centered, correct aspect ratio
-    if (CARD_ASPECT < ia) {
-      crop.h = img.height * 0.85;
-      crop.w = crop.h * CARD_ASPECT;
-    } else {
-      crop.w = img.width * 0.85;
-      crop.h = crop.w / CARD_ASPECT;
-    }
-    crop.x = (img.width  - crop.w) / 2;
-    crop.y = (img.height - crop.h) / 2;
-
+    crop.origImg = img;
+    crop.side    = side;
+    crop.rotation       = 0;
+    crop.roundedCorners = false;
+    crop.removeBg       = false;
+    document.getElementById('rot-slider').value = 0;
+    document.getElementById('rot-display').textContent = '0°';
+    document.getElementById('opt-round').classList.remove('on');
+    document.getElementById('opt-rmbg').classList.remove('on');
+    _buildRotatedImage();
     cropModal.classList.add('open');
-    drawCropFrame();
   };
   img.src = dataUrl;
 }
 
+// Build a rotated canvas from origImg, resize the display canvas, reset crop rect.
+function _buildRotatedImage() {
+  if (crop.rotation === 0) {
+    crop.img  = crop.origImg;
+    crop.imgW = crop.origImg.width;
+    crop.imgH = crop.origImg.height;
+  } else {
+    const rot = crop.rotation * Math.PI / 180;
+    const cos = Math.abs(Math.cos(rot)), sin = Math.abs(Math.sin(rot));
+    const ow = crop.origImg.width, oh = crop.origImg.height;
+    const rW = Math.ceil(ow * cos + oh * sin);
+    const rH = Math.ceil(ow * sin + oh * cos);
+    const rc = document.createElement('canvas');
+    rc.width = rW; rc.height = rH;
+    const rCtx = rc.getContext('2d');
+    rCtx.translate(rW / 2, rH / 2);
+    rCtx.rotate(rot);
+    rCtx.drawImage(crop.origImg, -ow / 2, -oh / 2);
+    crop.img  = rc;
+    crop.imgW = rW;
+    crop.imgH = rH;
+  }
+  // Fit canvas to viewport (leave room for rotation bar + option toggles)
+  const maxW = Math.min(window.innerWidth - 32, 860);
+  const maxH = window.innerHeight - 260;
+  const ia   = crop.imgW / crop.imgH;
+  let cW = maxW, cH = maxW / ia;
+  if (cH > maxH) { cH = maxH; cW = maxH * ia; }
+  cropCanvas.width  = Math.round(cW);
+  cropCanvas.height = Math.round(cH);
+  // Reset crop rect: 85 % of rotated image, centred, card aspect ratio
+  if (CARD_ASPECT < crop.imgW / crop.imgH) {
+    crop.h = crop.imgH * 0.85;
+    crop.w = crop.h * CARD_ASPECT;
+  } else {
+    crop.w = crop.imgW * 0.85;
+    crop.h = crop.w / CARD_ASPECT;
+  }
+  crop.x = (crop.imgW - crop.w) / 2;
+  crop.y = (crop.imgH - crop.h) / 2;
+  drawCropFrame();
+}
+
+function setCropRot(deg) {
+  crop.rotation = Math.max(-45, Math.min(45, Math.round(deg)));
+  document.getElementById('rot-slider').value = crop.rotation;
+  const d = crop.rotation;
+  document.getElementById('rot-display').textContent = (d > 0 ? '+' : '') + d + '°';
+  _buildRotatedImage();
+}
+
+function nudgeCropRot(delta) { setCropRot(crop.rotation + delta); }
+
+function toggleCropOpt(key, btnId) {
+  crop[key] = !crop[key];
+  document.getElementById(btnId).classList.toggle('on', crop[key]);
+}
+
 function closeCropModal() {
   cropModal.classList.remove('open');
-  crop.img  = null;
-  crop.drag = null;
+  crop.img = null; crop.origImg = null; crop.drag = null;
 }
 
 // Image coords ↔ canvas coords (image always fills canvas)
@@ -535,13 +596,77 @@ function applyCrop() {
   const out = document.createElement('canvas');
   out.width  = Math.round(crop.w);
   out.height = Math.round(crop.h);
-  out.getContext('2d').drawImage(crop.img, crop.x, crop.y, crop.w, crop.h, 0, 0, out.width, out.height);
-  const dataUrl = out.toDataURL('image/jpeg', 0.96);
+  const ctx  = out.getContext('2d');
+
+  if (crop.roundedCorners) {
+    const r = Math.round(Math.min(out.width, out.height) * 0.05);
+    ctx.beginPath();
+    ctx.roundRect(0, 0, out.width, out.height, r);
+    ctx.clip();
+  }
+  ctx.drawImage(crop.img, crop.x, crop.y, crop.w, crop.h, 0, 0, out.width, out.height);
+  if (crop.removeBg) _floodFillBg(out);
+
+  const usePng = crop.roundedCorners || crop.removeBg;
+  const dataUrl = out.toDataURL(usePng ? 'image/png' : 'image/jpeg', usePng ? undefined : 0.96);
   state[crop.side] = dataUrl;
   updateSlot(crop.side);
   updatePreview();
   updateStatus();
   closeCropModal();
+}
+
+// Flood-fill background from all 4 edges with white, using corner colour as reference.
+// Skips if corners disagree (card fills frame — no real background to remove).
+function _floodFillBg(canvas) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const d = imgData.data;
+
+  function patchColor(ox, oy) {
+    let r=0, g=0, b=0;
+    for (let dy=0; dy<3; dy++) for (let dx=0; dx<3; dx++) {
+      const i = ((oy+dy)*w + (ox+dx)) * 4;
+      r+=d[i]; g+=d[i+1]; b+=d[i+2];
+    }
+    return [r/9, g/9, b/9];
+  }
+  const corners = [patchColor(0,0), patchColor(w-3,0), patchColor(0,h-3), patchColor(w-3,h-3)];
+  const bg = [
+    corners.reduce((s,c)=>s+c[0],0)/4,
+    corners.reduce((s,c)=>s+c[1],0)/4,
+    corners.reduce((s,c)=>s+c[2],0)/4,
+  ];
+  // Corners disagree → card fills frame; background colour unknown — bail out
+  const variance = corners.reduce((s,c)=>s+(c[0]-bg[0])**2+(c[1]-bg[1])**2+(c[2]-bg[2])**2, 0);
+  if (variance > 3000) return;
+
+  const TOLERANCE = 38;
+  const visited = new Uint8Array(w * h);
+  const queue = [];
+
+  function seed(x, y) {
+    if (x<0||x>=w||y<0||y>=h) return;
+    const p = y*w+x;
+    if (visited[p]) return;
+    const i = p*4;
+    const dr=d[i]-bg[0], dg=d[i+1]-bg[1], db=d[i+2]-bg[2];
+    if (Math.sqrt(dr*dr+dg*dg+db*db) > TOLERANCE) return;
+    visited[p]=1; queue.push(p);
+  }
+
+  for (let x=0; x<w; x++) { seed(x,0); seed(x,h-1); }
+  for (let y=0; y<h; y++) { seed(0,y); seed(w-1,y); }
+
+  let qi=0;
+  while (qi < queue.length) {
+    const p=queue[qi++];
+    const x=p%w, y=Math.floor(p/w), i=p*4;
+    d[i]=255; d[i+1]=255; d[i+2]=255; d[i+3]=255;
+    seed(x+1,y); seed(x-1,y); seed(x,y+1); seed(x,y-1);
+  }
+  ctx.putImageData(imgData, 0, 0);
 }
 
 /* ══════════════════════════════════════════════
