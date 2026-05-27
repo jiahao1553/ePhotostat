@@ -138,13 +138,8 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 #cam-side-label.back-side{background:#1a252f;}
 #cam-hint{font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,255,255,.85);letter-spacing:.5px;text-align:center;padding:0 20px;min-height:16px;}
 
-/* Progress ring */
+/* Shutter area */
 #prog-wrap{position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding-bottom:env(safe-area-inset-bottom,0px);padding-bottom:max(env(safe-area-inset-bottom,0px),28px);}
-#prog-ring-wrap{position:relative;width:72px;height:72px;margin-bottom:12px;}
-#prog-ring-wrap svg{transform:rotate(-90deg);}
-#prog-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:5;}
-#prog-fill{fill:none;stroke:#27ae60;stroke-width:5;stroke-linecap:round;stroke-dasharray:0 1000;transition:stroke-dasharray .12s linear;}
-#prog-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;}
 #cam-close{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;padding:8px 22px;border-radius:20px;cursor:pointer;backdrop-filter:blur(8px);}
 #cam-close:hover{background:rgba(255,255,255,.25);}
 
@@ -167,6 +162,14 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 /* Flip camera button */
 #flip-btn{position:absolute;top:0;left:14px;padding-top:env(safe-area-inset-top,0px);padding-top:max(env(safe-area-inset-top,0px),14px);background:none;border:none;color:#fff;cursor:pointer;opacity:.75;font-size:22px;}
 #flip-btn:hover{opacity:1;}
+
+/* Shutter button */
+#shutter-btn{width:76px;height:76px;border-radius:50%;border:4px solid rgba(255,255,255,0.85);background:rgba(255,255,255,0.12);cursor:pointer;position:relative;margin-bottom:12px;transition:transform .1s,background .15s;-webkit-tap-highlight-color:transparent;}
+#shutter-btn::after{content:'';position:absolute;inset:7px;border-radius:50%;background:#fff;transition:background .15s;}
+#shutter-btn:active{transform:scale(.92);}
+#shutter-btn:active::after{background:rgba(255,255,255,.65);}
+#shutter-btn.captured::after{background:#27ae60;}
+#shutter-label{font-family:'DM Mono',monospace;font-size:9px;color:rgba(255,255,255,.55);letter-spacing:1px;margin-bottom:10px;}
 </style>
 </head>
 <body>
@@ -204,15 +207,10 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
     <div id="sharp-label">FOCUS</div>
   </div>
 
-  <!-- progress ring + close -->
+  <!-- shutter + close -->
   <div id="prog-wrap">
-    <div id="prog-ring-wrap">
-      <svg viewBox="0 0 72 72" width="72" height="72">
-        <circle id="prog-track" cx="36" cy="36" r="30"/>
-        <circle id="prog-fill" cx="36" cy="36" r="30"/>
-      </svg>
-      <div id="prog-icon">📷</div>
-    </div>
+    <button id="shutter-btn" onclick="manualCapture()" aria-label="Capture"></button>
+    <div id="shutter-label">TAP TO CAPTURE</div>
     <button id="cam-close" onclick="closeCamera()">CANCEL</button>
   </div>
 
@@ -558,21 +556,20 @@ let facingMode = 'environment'; // rear camera
 let torchOn = false;
 let torchTrack = null;
 
-const STEADY_FRAMES_NEEDED = 18;   // ~0.9s at 20fps analysis
-const SHARP_THRESHOLD      = 85;   // Laplacian variance threshold (tuned)
-const BRIGHT_MIN           = 55;   // average brightness minimum
-const BRIGHT_MAX           = 215;  // avoid over-exposure
+const STEADY_FRAMES_NEEDED = 14;   // ~0.7s at 20fps analysis
+const SHARP_THRESHOLD      = 22;   // Laplacian variance — mobile cameras are much lower than desktop
+const BRIGHT_MIN           = 40;   // average brightness minimum
+const BRIGHT_MAX           = 225;  // avoid over-exposure
 
-const video    = document.getElementById('cam-video');
-const vfCanvas = document.getElementById('vf-canvas');
-const vfCtx    = vfCanvas.getContext('2d');
-const flash    = document.getElementById('flash');
-const progFill = document.getElementById('prog-fill');
-const progIcon = document.getElementById('prog-icon');
-const sharpFill= document.getElementById('sharp-bar-fill');
-const camHint  = document.getElementById('cam-hint');
-const sideLabel= document.getElementById('cam-side-label');
-const torchBtn = document.getElementById('torch-btn');
+const video      = document.getElementById('cam-video');
+const vfCanvas   = document.getElementById('vf-canvas');
+const vfCtx      = vfCanvas.getContext('2d');
+const flash      = document.getElementById('flash');
+const shutterBtn = document.getElementById('shutter-btn');
+const sharpFill  = document.getElementById('sharp-bar-fill');
+const camHint    = document.getElementById('cam-hint');
+const sideLabel  = document.getElementById('cam-side-label');
+const torchBtn   = document.getElementById('torch-btn');
 
 // Offscreen canvas for analysis
 const analysisCanvas = document.createElement('canvas');
@@ -738,17 +735,9 @@ function computeSharpness(W, H) {
   return { sharpness: variance, brightness: avgBright };
 }
 
-/* ── Progress ring ── */
-const CIRC = 2 * Math.PI * 30; // r=30
-function setProgress(frac) {
-  const d = CIRC * Math.max(0, Math.min(1, frac));
-  progFill.style.strokeDasharray = `${d} ${CIRC}`;
-  progFill.style.stroke = frac >= 1 ? '#fff' : '#27ae60';
-}
 function resetProgress() {
   steadyCount = 0;
-  setProgress(0);
-  progIcon.textContent = '📷';
+  shutterBtn.classList.remove('captured');
 }
 
 /* ── Analysis loop ── */
@@ -790,23 +779,26 @@ function startAnalysis() {
 
     if (ok) {
       steadyCount++;
-      setProgress(steadyCount / STEADY_FRAMES_NEEDED);
       if (steadyCount >= STEADY_FRAMES_NEEDED && !captured) {
         captured = true;
         doCapture();
       }
     } else {
       if (steadyCount > 0) steadyCount = Math.max(0, steadyCount - 2);
-      setProgress(steadyCount / STEADY_FRAMES_NEEDED);
     }
   }
   loop();
 }
 
 /* ── Capture ── */
+function manualCapture() {
+  if (captured || video.readyState < 2) return;
+  captured = true;
+  doCapture();
+}
+
 function doCapture() {
-  progIcon.textContent = '✓';
-  setProgress(1);
+  shutterBtn.classList.add('captured');
   camHint.textContent = '✓ Captured!';
 
   // Flash
