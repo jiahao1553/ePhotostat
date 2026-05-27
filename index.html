@@ -43,7 +43,9 @@ header .sub{font-family:'DM Mono',monospace;font-size:10px;color:#888;margin-lef
 .slot-placeholder span{font-size:12px;font-weight:500;}
 .slot-placeholder small{font-family:'DM Mono',monospace;font-size:10px;opacity:.65;}
 .remove-btn{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:13px;line-height:24px;text-align:center;display:none;}
+.edit-btn{position:absolute;top:6px;right:34px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:24px;text-align:center;display:none;}
 .capture-slot.filled:hover .remove-btn,.capture-slot.filled .remove-btn-always{display:block;}
+.capture-slot.filled:hover .edit-btn{display:block;}
 .capture-btn{width:100%;border:none;background:var(--steel);color:#fff;border-radius:5px;padding:10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .2s;margin-bottom:10px;}
 .capture-btn:hover{background:#1a252f;}
 .capture-btn.secondary{background:transparent;border:1px solid var(--border);color:var(--steel);margin-bottom:0;}
@@ -197,7 +199,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
     <button class="rot-btn" onclick="setCropRot(0)" title="Reset rotation">↺</button>
   </div>
   <div id="crop-opts">
-    <button id="opt-round" class="crop-opt" onclick="toggleCropOpt('roundedCorners','opt-round')">⌒ Rounded corners</button>
+    <button id="opt-persp" class="crop-opt" onclick="toggleCropOpt('perspMode','opt-persp')">⊡ Straighten</button>
     <button id="opt-rmbg"  class="crop-opt" onclick="toggleCropOpt('removeBg','opt-rmbg')">✦ Remove background</button>
   </div>
   <div id="crop-footer">
@@ -265,6 +267,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
             </div>
           </div>
           <div class="slot-label">FRONT</div>
+          <button class="edit-btn"   onclick="openCropModal(state.front,'front')">✎</button>
           <button class="remove-btn" onclick="removeImage(event,'front')">✕</button>
         </div>
         <button class="capture-btn" onclick="openCamera('front')">
@@ -287,6 +290,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
             </div>
           </div>
           <div class="slot-label back">BACK</div>
+          <button class="edit-btn"   onclick="openCropModal(state.back,'back')">✎</button>
           <button class="remove-btn" onclick="removeImage(event,'back')">✕</button>
         </div>
         <button class="capture-btn" onclick="openCamera('back')">
@@ -374,21 +378,26 @@ const crop = {
   x: 0, y: 0, w: 0, h: 0, // crop rect in image pixel coords
   side: null,
   drag: null, dragStart: null,
-  rotation: 0, roundedCorners: false, removeBg: false,
+  rotation: 0, perspMode: false, removeBg: false,
 };
+// 4-corner quad for perspective correction (image pixel coords)
+const perspQuad = { tl:{x:0,y:0}, tr:{x:0,y:0}, bl:{x:0,y:0}, br:{x:0,y:0} };
 
-function openCropModal(dataUrl, side) {
+function openCropModal(dataUrl, side, initRect = null) {
+  if (!dataUrl) return;
   const img = new Image();
   img.onload = () => {
-    crop.origImg = img;
-    crop.side    = side;
-    crop.rotation       = 0;
-    crop.roundedCorners = false;
-    crop.removeBg       = false;
+    crop.origImg  = img;
+    crop.side     = side;
+    crop.rotation = 0;
+    crop.perspMode = false;
+    crop.removeBg  = false;
+    crop._initRect = initRect; // stored so _buildRotatedImage can use it
     document.getElementById('rot-slider').value = 0;
     document.getElementById('rot-display').textContent = '0°';
-    document.getElementById('opt-round').classList.remove('on');
+    document.getElementById('opt-persp').classList.remove('on');
     document.getElementById('opt-rmbg').classList.remove('on');
+    document.getElementById('crop-hint').textContent = 'Drag to reposition · Drag corners to resize';
     _buildRotatedImage();
     cropModal.classList.add('open');
   };
@@ -425,17 +434,30 @@ function _buildRotatedImage() {
   if (cH > maxH) { cH = maxH; cW = maxH * ia; }
   cropCanvas.width  = Math.round(cW);
   cropCanvas.height = Math.round(cH);
-  // Reset crop rect: 85 % of rotated image, centred, card aspect ratio
-  if (CARD_ASPECT < crop.imgW / crop.imgH) {
+  // Reset crop rect to initRect (camera capture pre-detection) or 85% centred
+  const ir = (crop.rotation === 0) ? crop._initRect : null;
+  if (ir) {
+    crop.x = ir.x; crop.y = ir.y; crop.w = ir.w; crop.h = ir.h;
+  } else if (CARD_ASPECT < crop.imgW / crop.imgH) {
     crop.h = crop.imgH * 0.85;
     crop.w = crop.h * CARD_ASPECT;
+    crop.x = (crop.imgW - crop.w) / 2;
+    crop.y = (crop.imgH - crop.h) / 2;
   } else {
     crop.w = crop.imgW * 0.85;
     crop.h = crop.w / CARD_ASPECT;
+    crop.x = (crop.imgW - crop.w) / 2;
+    crop.y = (crop.imgH - crop.h) / 2;
   }
-  crop.x = (crop.imgW - crop.w) / 2;
-  crop.y = (crop.imgH - crop.h) / 2;
+  _initPerspQuad();
   drawCropFrame();
+}
+
+function _initPerspQuad() {
+  perspQuad.tl = { x: crop.x,         y: crop.y         };
+  perspQuad.tr = { x: crop.x + crop.w, y: crop.y         };
+  perspQuad.bl = { x: crop.x,         y: crop.y + crop.h };
+  perspQuad.br = { x: crop.x + crop.w, y: crop.y + crop.h };
 }
 
 function setCropRot(deg) {
@@ -451,6 +473,13 @@ function nudgeCropRot(delta) { setCropRot(crop.rotation + delta); }
 function toggleCropOpt(key, btnId) {
   crop[key] = !crop[key];
   document.getElementById(btnId).classList.toggle('on', crop[key]);
+  if (key === 'perspMode') {
+    _initPerspQuad(); // seed handles from current crop rect
+    document.getElementById('crop-hint').textContent = crop.perspMode
+      ? 'Drag 4 corners onto the card edges · Confirm to straighten'
+      : 'Drag to reposition · Drag corners to resize';
+    drawCropFrame();
+  }
 }
 
 function closeCropModal() {
@@ -470,6 +499,41 @@ function drawCropFrame() {
   const W = cropCanvas.width, H = cropCanvas.height;
   cropCtx.clearRect(0, 0, W, H);
   cropCtx.drawImage(crop.img, 0, 0, W, H);
+
+  if (crop.perspMode) {
+    // Convert quad corners to canvas coords (TL→TR→BR→BL order for polygon)
+    const pts = [perspQuad.tl, perspQuad.tr, perspQuad.br, perspQuad.bl].map(p => i2c(p.x, p.y));
+
+    // Dark overlay with quad hole
+    cropCtx.fillStyle = 'rgba(0,0,0,0.55)';
+    cropCtx.beginPath();
+    cropCtx.rect(0, 0, W, H);
+    cropCtx.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts) cropCtx.lineTo(p.x, p.y);
+    cropCtx.closePath();
+    cropCtx.fill('evenodd');
+
+    // Quad outline
+    cropCtx.strokeStyle = 'rgba(255,255,255,0.9)';
+    cropCtx.lineWidth = 1.5;
+    cropCtx.beginPath();
+    cropCtx.moveTo(pts[0].x, pts[0].y);
+    for (const p of pts) cropCtx.lineTo(p.x, p.y);
+    cropCtx.closePath();
+    cropCtx.stroke();
+
+    // Circle handles at each corner
+    for (const p of pts) {
+      cropCtx.beginPath();
+      cropCtx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+      cropCtx.fillStyle = '#fff';
+      cropCtx.fill();
+      cropCtx.strokeStyle = 'rgba(0,0,0,0.35)';
+      cropCtx.lineWidth = 1.5;
+      cropCtx.stroke();
+    }
+    return;
+  }
 
   const { x: cx, y: cy } = i2c(crop.x, crop.y);
   const { x: cx2, y: cy2 } = i2c(crop.x + crop.w, crop.y + crop.h);
@@ -541,6 +605,17 @@ function onCropDown(e) {
   if (!cropModal.classList.contains('open')) return;
   e.preventDefault();
   const pos = getEventPos(e);
+
+  if (crop.perspMode) {
+    for (const key of ['tl','tr','bl','br']) {
+      const cp = i2c(perspQuad[key].x, perspQuad[key].y);
+      if (Math.hypot(pos.x - cp.x, pos.y - cp.y) <= HANDLE_R + 6) {
+        crop.drag = 'p_' + key; return;
+      }
+    }
+    return;
+  }
+
   const hit = cropHitTest(pos.x, pos.y);
   if (!hit) return;
   crop.drag = hit;
@@ -552,6 +627,18 @@ function onCropMove(e) {
   if (!crop.drag) return;
   e.preventDefault();
   const pos = getEventPos(e);
+
+  if (crop.drag.startsWith('p_')) {
+    const key = crop.drag.slice(2);
+    const ip = c2i(pos.x, pos.y);
+    perspQuad[key] = {
+      x: Math.max(0, Math.min(crop.imgW, ip.x)),
+      y: Math.max(0, Math.min(crop.imgH, ip.y)),
+    };
+    drawCropFrame();
+    return;
+  }
+
   const ip  = c2i(pos.x, pos.y);
   const ds  = crop.dragStart;
   const dx  = ip.x - ds.x;
@@ -593,27 +680,73 @@ function onCropMove(e) {
 function onCropUp() { crop.drag = null; }
 
 function applyCrop() {
-  const out = document.createElement('canvas');
-  out.width  = Math.round(crop.w);
-  out.height = Math.round(crop.h);
-  const ctx  = out.getContext('2d');
-
-  if (crop.roundedCorners) {
-    const r = Math.round(Math.min(out.width, out.height) * 0.05);
-    ctx.beginPath();
-    ctx.roundRect(0, 0, out.width, out.height, r);
-    ctx.clip();
+  let out;
+  if (crop.perspMode) {
+    out = _perspTransform(crop.img, perspQuad);
+  } else {
+    out = document.createElement('canvas');
+    out.width  = Math.round(crop.w);
+    out.height = Math.round(crop.h);
+    out.getContext('2d').drawImage(crop.img, crop.x, crop.y, crop.w, crop.h, 0, 0, out.width, out.height);
   }
-  ctx.drawImage(crop.img, crop.x, crop.y, crop.w, crop.h, 0, 0, out.width, out.height);
   if (crop.removeBg) _floodFillBg(out);
 
-  const usePng = crop.roundedCorners || crop.removeBg;
-  const dataUrl = out.toDataURL(usePng ? 'image/png' : 'image/jpeg', usePng ? undefined : 0.96);
+  const dataUrl = out.toDataURL(crop.removeBg ? 'image/png' : 'image/jpeg', crop.removeBg ? undefined : 0.96);
   state[crop.side] = dataUrl;
   updateSlot(crop.side);
   updatePreview();
   updateStatus();
   closeCropModal();
+}
+
+/* Perspective-correct srcCanvas given a 4-corner quad in image pixel coords.
+   Uses a 32×32 grid subdivision — each cell is an affine patch via setTransform.
+   Output dimensions are derived from average edge lengths of the quad. */
+function _perspTransform(srcCanvas, quad) {
+  const { tl, tr, bl, br } = quad;
+  const wTop  = Math.hypot(tr.x-tl.x, tr.y-tl.y);
+  const wBot  = Math.hypot(br.x-bl.x, br.y-bl.y);
+  const hLeft = Math.hypot(bl.x-tl.x, bl.y-tl.y);
+  const hRight= Math.hypot(br.x-tr.x, br.y-tr.y);
+  const dstW  = Math.max(1, Math.round((wTop + wBot) / 2));
+  const dstH  = Math.max(1, Math.round((hLeft + hRight) / 2));
+
+  const dst = document.createElement('canvas');
+  dst.width = dstW; dst.height = dstH;
+  const ctx = dst.getContext('2d');
+
+  const N = 32;
+  for (let row = 0; row < N; row++) {
+    for (let col = 0; col < N; col++) {
+      const u0=col/N, u1=(col+1)/N, v0=row/N, v1=(row+1)/N;
+
+      // Bilinear map: output (u,v) → source (x,y)
+      const blerp = (u, v) => ({
+        x: tl.x*(1-u)*(1-v) + tr.x*u*(1-v) + bl.x*(1-u)*v + br.x*u*v,
+        y: tl.y*(1-u)*(1-v) + tr.y*u*(1-v) + bl.y*(1-u)*v + br.y*u*v,
+      });
+
+      const s00=blerp(u0,v0), s10=blerp(u1,v0), s01=blerp(u0,v1);
+      const dx=u0*dstW, dy=v0*dstH, dw=(u1-u0)*dstW, dh=(v1-v0)*dstH;
+      const sx=s10.x-s00.x, sy=s10.y-s00.y;
+      const tx=s01.x-s00.x, ty=s01.y-s00.y;
+      const det=sx*ty - sy*tx;
+      if (Math.abs(det) < 1e-6) continue;
+
+      // Affine: canvas = M·src, where M maps src patch → dest cell
+      const a= dw*ty/det, c=-tx*dw/det;
+      const b=-sy*dh/det, d= sx*dh/det;
+      const e=dx - a*s00.x - c*s00.y;
+      const f=dy - b*s00.x - d*s00.y;
+
+      ctx.save();
+      ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
+      ctx.setTransform(a, b, c, d, e, f);
+      ctx.drawImage(srcCanvas, 0, 0);
+      ctx.restore();
+    }
+  }
+  return dst;
 }
 
 // Flood-fill background from all 4 edges with white, using corner colour as reference.
@@ -1036,7 +1169,7 @@ function manualCapture() {
 
 function doCapture() {
   shutterBtn.classList.add('captured');
-  camHint.textContent = '✓ Captured!';
+  camHint.textContent = '✓ Captured — adjust & confirm';
 
   // Flash
   flash.classList.remove('go');
@@ -1049,12 +1182,8 @@ function doCapture() {
   cap.height = video.videoHeight;
   cap.getContext('2d').drawImage(video, 0, 0);
 
-  // Crop to viewfinder box (map vfBox from display to video coords)
+  // Map vfBox from display coords to video pixel coords
   const rect = video.getBoundingClientRect();
-  const scaleX = video.videoWidth  / rect.width;
-  const scaleY = video.videoHeight / rect.height;
-
-  // video object-fit:cover offset compensation
   const vidAspect = video.videoWidth / video.videoHeight;
   const rectAspect = rect.width / rect.height;
   let offX = 0, offY = 0, renderW = rect.width, renderH = rect.height;
@@ -1068,33 +1197,33 @@ function doCapture() {
   const vidScaleX = video.videoWidth / renderW;
   const vidScaleY = video.videoHeight / renderH;
 
-  const cropX = Math.max(0, (vfBox.x - offX) * vidScaleX);
-  const cropY = Math.max(0, (vfBox.y - offY) * vidScaleY);
-  const cropW = vfBox.w * vidScaleX;
-  const cropH = vfBox.h * vidScaleY;
+  const cardX = Math.max(0, (vfBox.x - offX) * vidScaleX);
+  const cardY = Math.max(0, (vfBox.y - offY) * vidScaleY);
+  const cardW = vfBox.w * vidScaleX;
+  const cardH = vfBox.h * vidScaleY;
 
-  const cropped = document.createElement('canvas');
-  cropped.width = Math.round(cropW);
-  cropped.height = Math.round(cropH);
-  cropped.getContext('2d').drawImage(cap, cropX, cropY, cropW, cropH, 0, 0, cropped.width, cropped.height);
+  // Give the modal a view with 20% margin around the detected card region
+  const marg  = 0.20;
+  const extX  = Math.max(0, cardX - cardW * marg);
+  const extY  = Math.max(0, cardY - cardH * marg);
+  const extW  = Math.min(cap.width  - extX, cardW * (1 + 2*marg));
+  const extH  = Math.min(cap.height - extY, cardH * (1 + 2*marg));
 
-  // Auto-crop to detected card edges; fall back to viewfinder bounds if unsure
-  const edges = findCardEdges(cropped);
-  let final = cropped;
-  if (edges) {
-    final = document.createElement('canvas');
-    final.width  = edges.w;
-    final.height = edges.h;
-    final.getContext('2d').drawImage(cropped, edges.x, edges.y, edges.w, edges.h, 0, 0, edges.w, edges.h);
-  }
+  const modalCanvas = document.createElement('canvas');
+  modalCanvas.width  = Math.round(extW);
+  modalCanvas.height = Math.round(extH);
+  modalCanvas.getContext('2d').drawImage(cap, extX, extY, extW, extH, 0, 0, modalCanvas.width, modalCanvas.height);
 
-  const dataUrl = final.toDataURL('image/jpeg', 0.96);
-  state[camSide] = dataUrl;
-  updateSlot(camSide);
-  updatePreview();
-  updateStatus();
+  const initRect = {
+    x: Math.round(cardX - extX), y: Math.round(cardY - extY),
+    w: Math.round(cardW),        h: Math.round(cardH),
+  };
 
-  setTimeout(closeCamera, 700);
+  const side = camSide;
+  setTimeout(() => {
+    closeCamera();
+    openCropModal(modalCanvas.toDataURL('image/jpeg', 0.96), side, initRect);
+  }, 380);
 }
 
 /* ══════════════════════════════════════════════
