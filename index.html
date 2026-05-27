@@ -96,6 +96,20 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 @keyframes spin{to{transform:rotate(360deg);}}
 
 /* ═══════════════════════════════════════════
+   CROP MODAL
+═══════════════════════════════════════════ */
+#crop-modal{display:none;position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.88);flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;}
+#crop-modal.open{display:flex;}
+#crop-hint{color:rgba(255,255,255,.7);font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.5px;text-align:center;}
+#crop-canvas{display:block;cursor:crosshair;touch-action:none;border-radius:2px;}
+#crop-footer{display:flex;gap:12px;}
+#crop-cancel-btn,#crop-confirm-btn{border:none;border-radius:5px;padding:10px 28px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;}
+#crop-cancel-btn{background:rgba(255,255,255,.15);color:#fff;}
+#crop-cancel-btn:hover{background:rgba(255,255,255,.25);}
+#crop-confirm-btn{background:var(--accent);color:#fff;}
+#crop-confirm-btn:hover{background:#a93226;}
+
+/* ═══════════════════════════════════════════
    CAMERA MODAL
 ═══════════════════════════════════════════ */
 #cam-modal{display:none;position:fixed;inset:0;z-index:500;background:#000;flex-direction:column;align-items:center;justify-content:center;}
@@ -158,6 +172,16 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 <body>
 
 <div id="progress-overlay"><div class="spinner"></div><span>Generating PDF…</span></div>
+
+<!-- ═══ CROP MODAL ═══ -->
+<div id="crop-modal">
+  <div id="crop-hint">Drag to reposition · Drag corners to resize</div>
+  <canvas id="crop-canvas"></canvas>
+  <div id="crop-footer">
+    <button id="crop-cancel-btn" onclick="closeCropModal()">Cancel</button>
+    <button id="crop-confirm-btn" onclick="applyCrop()">Use Crop</button>
+  </div>
+</div>
 
 <!-- ═══ CAMERA MODAL ═══ -->
 <div id="cam-modal">
@@ -306,7 +330,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
         <div class="stamp-text" id="stamp-el"></div>
       </div>
     </div>
-    <div class="hint">Preview updates live · PDF renders at full A4 resolution</div>
+    <div class="hint">Preview updates live · PDF renders cards at actual 85.6×54 mm size</div>
   </div>
 
 </div>
@@ -316,6 +340,211 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
    STATE
 ══════════════════════════════════════════════ */
 const state = { front: null, back: null };
+
+/* ══════════════════════════════════════════════
+   CROP MODAL
+══════════════════════════════════════════════ */
+const cropModal  = document.getElementById('crop-modal');
+const cropCanvas = document.getElementById('crop-canvas');
+const cropCtx    = cropCanvas.getContext('2d');
+
+const CARD_ASPECT = 85.6 / 54;
+const HANDLE_R    = 12; // hit radius for corner handles in canvas px
+
+const crop = {
+  img: null, imgW: 0, imgH: 0,
+  x: 0, y: 0, w: 0, h: 0, // crop rect in image pixel coords
+  side: null,
+  drag: null,       // null | 'move' | 'tl' | 'tr' | 'bl' | 'br'
+  dragStart: null
+};
+
+function openCropModal(dataUrl, side) {
+  const img = new Image();
+  img.onload = () => {
+    crop.img  = img;
+    crop.imgW = img.width;
+    crop.imgH = img.height;
+    crop.side = side;
+
+    // Size canvas to fit viewport, preserving image aspect
+    const maxW = Math.min(window.innerWidth - 32, 860);
+    const maxH = window.innerHeight - 140;
+    const ia   = img.width / img.height;
+    let cW = maxW, cH = maxW / ia;
+    if (cH > maxH) { cH = maxH; cW = maxH * ia; }
+    cropCanvas.width  = Math.round(cW);
+    cropCanvas.height = Math.round(cH);
+
+    // Initial crop: 85% of image, centered, correct aspect ratio
+    if (CARD_ASPECT < ia) {
+      crop.h = img.height * 0.85;
+      crop.w = crop.h * CARD_ASPECT;
+    } else {
+      crop.w = img.width * 0.85;
+      crop.h = crop.w / CARD_ASPECT;
+    }
+    crop.x = (img.width  - crop.w) / 2;
+    crop.y = (img.height - crop.h) / 2;
+
+    cropModal.classList.add('open');
+    drawCropFrame();
+  };
+  img.src = dataUrl;
+}
+
+function closeCropModal() {
+  cropModal.classList.remove('open');
+  crop.img  = null;
+  crop.drag = null;
+}
+
+// Image coords ↔ canvas coords (image always fills canvas)
+function i2c(ix, iy) {
+  return { x: ix * cropCanvas.width / crop.imgW, y: iy * cropCanvas.height / crop.imgH };
+}
+function c2i(cx, cy) {
+  return { x: cx * crop.imgW / cropCanvas.width, y: cy * crop.imgH / cropCanvas.height };
+}
+
+function drawCropFrame() {
+  const W = cropCanvas.width, H = cropCanvas.height;
+  cropCtx.clearRect(0, 0, W, H);
+  cropCtx.drawImage(crop.img, 0, 0, W, H);
+
+  const { x: cx, y: cy } = i2c(crop.x, crop.y);
+  const { x: cx2, y: cy2 } = i2c(crop.x + crop.w, crop.y + crop.h);
+  const cw = cx2 - cx, ch = cy2 - cy;
+
+  // Dark overlay with crop-rect hole
+  cropCtx.fillStyle = 'rgba(0,0,0,0.58)';
+  cropCtx.beginPath();
+  cropCtx.rect(0, 0, W, H);
+  cropCtx.rect(cx, cy, cw, ch);
+  cropCtx.fill('evenodd');
+
+  // Crop border
+  cropCtx.strokeStyle = 'rgba(255,255,255,0.9)';
+  cropCtx.lineWidth = 1.5;
+  cropCtx.strokeRect(cx, cy, cw, ch);
+
+  // Rule-of-thirds grid
+  cropCtx.strokeStyle = 'rgba(255,255,255,0.22)';
+  cropCtx.lineWidth = 0.5;
+  cropCtx.beginPath();
+  cropCtx.moveTo(cx + cw/3, cy);     cropCtx.lineTo(cx + cw/3, cy + ch);
+  cropCtx.moveTo(cx + cw*2/3, cy);   cropCtx.lineTo(cx + cw*2/3, cy + ch);
+  cropCtx.moveTo(cx, cy + ch/3);     cropCtx.lineTo(cx + cw, cy + ch/3);
+  cropCtx.moveTo(cx, cy + ch*2/3);   cropCtx.lineTo(cx + cw, cy + ch*2/3);
+  cropCtx.stroke();
+
+  // Corner handles
+  const hs = 9;
+  [[cx, cy], [cx+cw, cy], [cx, cy+ch], [cx+cw, cy+ch]].forEach(([hx, hy]) => {
+    cropCtx.fillStyle = '#fff';
+    cropCtx.fillRect(hx - hs/2, hy - hs/2, hs, hs);
+    cropCtx.strokeStyle = 'rgba(0,0,0,0.35)';
+    cropCtx.lineWidth = 1;
+    cropCtx.strokeRect(hx - hs/2, hy - hs/2, hs, hs);
+  });
+}
+
+function cropHitTest(cx, cy) {
+  const { x: hx0, y: hy0 } = i2c(crop.x, crop.y);
+  const { x: hx1, y: hy1 } = i2c(crop.x + crop.w, crop.y + crop.h);
+  const corners = [
+    { id: 'tl', x: hx0, y: hy0 },
+    { id: 'tr', x: hx1, y: hy0 },
+    { id: 'bl', x: hx0, y: hy1 },
+    { id: 'br', x: hx1, y: hy1 },
+  ];
+  for (const c of corners) {
+    if (Math.hypot(cx - c.x, cy - c.y) <= HANDLE_R) return c.id;
+  }
+  if (cx >= hx0 && cx <= hx1 && cy >= hy0 && cy <= hy1) return 'move';
+  return null;
+}
+
+function getEventPos(e) {
+  const rect = cropCanvas.getBoundingClientRect();
+  const src  = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+}
+
+cropCanvas.addEventListener('mousedown', onCropDown);
+cropCanvas.addEventListener('touchstart', onCropDown, { passive: false });
+document.addEventListener('mousemove', onCropMove);
+document.addEventListener('touchmove', onCropMove, { passive: false });
+document.addEventListener('mouseup', onCropUp);
+document.addEventListener('touchend', onCropUp);
+
+function onCropDown(e) {
+  if (!cropModal.classList.contains('open')) return;
+  e.preventDefault();
+  const pos = getEventPos(e);
+  const hit = cropHitTest(pos.x, pos.y);
+  if (!hit) return;
+  crop.drag = hit;
+  const ip = c2i(pos.x, pos.y);
+  crop.dragStart = { ...ip, origX: crop.x, origY: crop.y, origW: crop.w, origH: crop.h };
+}
+
+function onCropMove(e) {
+  if (!crop.drag) return;
+  e.preventDefault();
+  const pos = getEventPos(e);
+  const ip  = c2i(pos.x, pos.y);
+  const ds  = crop.dragStart;
+  const dx  = ip.x - ds.x;
+  const IW  = crop.imgW, IH = crop.imgH;
+
+  if (crop.drag === 'move') {
+    crop.x = Math.max(0, Math.min(IW - crop.w, ds.origX + dx));
+    crop.y = Math.max(0, Math.min(IH - crop.h, ds.origY + (ip.y - ds.y)));
+  } else {
+    let nx = crop.x, ny = crop.y, nw = crop.w, nh = crop.h;
+    if (crop.drag === 'br') {
+      nw = Math.max(40, ds.origW + dx);
+      nh = nw / CARD_ASPECT;
+    } else if (crop.drag === 'bl') {
+      nw = Math.max(40, ds.origW - dx);
+      nh = nw / CARD_ASPECT;
+      nx = ds.origX + ds.origW - nw;
+    } else if (crop.drag === 'tr') {
+      nw = Math.max(40, ds.origW + dx);
+      nh = nw / CARD_ASPECT;
+      ny = ds.origY + ds.origH - nh;
+    } else if (crop.drag === 'tl') {
+      nw = Math.max(40, ds.origW - dx);
+      nh = nw / CARD_ASPECT;
+      nx = ds.origX + ds.origW - nw;
+      ny = ds.origY + ds.origH - nh;
+    }
+    // Clamp to image bounds
+    nx = Math.max(0, nx);
+    ny = Math.max(0, ny);
+    if (nx + nw > IW) { nw = IW - nx; nh = nw / CARD_ASPECT; }
+    if (ny + nh > IH) { nh = IH - ny; nw = nh * CARD_ASPECT; }
+    crop.x = nx; crop.y = ny; crop.w = nw; crop.h = nh;
+  }
+
+  drawCropFrame();
+}
+
+function onCropUp() { crop.drag = null; }
+
+function applyCrop() {
+  const out = document.createElement('canvas');
+  out.width  = Math.round(crop.w);
+  out.height = Math.round(crop.h);
+  out.getContext('2d').drawImage(crop.img, crop.x, crop.y, crop.w, crop.h, 0, 0, out.width, out.height);
+  const dataUrl = out.toDataURL('image/jpeg', 0.96);
+  state[crop.side] = dataUrl;
+  updateSlot(crop.side);
+  updatePreview();
+  updateStatus();
+  closeCropModal();
+}
 
 /* ══════════════════════════════════════════════
    CAMERA ENGINE
@@ -442,7 +671,7 @@ function drawViewfinder(sharp, bright, ok) {
   vfCtx.stroke();
 
   // Corner marks
-  const cs = 22, cw = 3.5, cr = 6;
+  const cs = 22, cw = 3.5;
   const corners = [[boxX,boxY],[boxX+boxW,boxY],[boxX,boxY+boxH],[boxX+boxW,boxY+boxH]];
   const cornerPaths = [
     (x,y)=>[[x,y+cs],[x,y],[x+cs,y]],
@@ -462,7 +691,6 @@ function drawViewfinder(sharp, bright, ok) {
     vfCtx.stroke();
   });
 
-  // Update corners div (reuse canvas corner approach via absolute positioned overlay)
   positionCornerDiv();
 }
 
@@ -636,13 +864,9 @@ function doCapture() {
 function handleFile(e, side) {
   const file = e.target.files[0];
   if (!file) return;
+  e.target.value = ''; // allow re-selecting the same file
   const reader = new FileReader();
-  reader.onload = ev => {
-    state[side] = ev.target.result;
-    updateSlot(side);
-    updatePreview();
-    updateStatus();
-  };
+  reader.onload = ev => openCropModal(ev.target.result, side);
   reader.readAsDataURL(file);
 }
 
@@ -724,11 +948,21 @@ async function downloadPDF() {
     const bw = document.getElementById('bw-toggle').checked;
     const text = document.getElementById('stamp-text').value.trim();
     const angle = parseFloat(document.getElementById('stamp-angle').value);
-    const W = 2480, H = 3508; // A4 @ 300dpi
-    const MARGIN = W * 0.08;
-    const CARD_W = W - MARGIN * 2;
-    const CARD_H = CARD_W * (54 / 85.6);
-    const GAP = (H - MARGIN * 2 - CARD_H * 2) / 3;
+
+    // A4 at 300 dpi
+    const W = 2480, H = 3508;
+    const PPM = 300 / 25.4; // pixels per mm
+
+    // Actual ID card size (ISO/IEC 7810 ID-1): 85.6 × 54 mm
+    const CARD_W = Math.round(85.6 * PPM); // 1011 px
+    const CARD_H = Math.round(54   * PPM); // 638 px
+    const CARD_X = Math.round((W - CARD_W) / 2); // centered horizontally
+
+    // Vertical: center the two cards as a group with a 15 mm gap
+    const GAP = Math.round(15 * PPM);
+    const totalH = CARD_H * 2 + GAP;
+    const y1 = Math.round((H - totalH) / 2);
+    const y2 = y1 + CARD_H + GAP;
 
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
@@ -737,34 +971,34 @@ async function downloadPDF() {
 
     const drawCard = (dataUrl, y) => new Promise(res => {
       if (!dataUrl) {
-        ctx.fillStyle = '#f0ede6'; ctx.fillRect(MARGIN, y, CARD_W, CARD_H);
+        ctx.fillStyle = '#f0ede6'; ctx.fillRect(CARD_X, y, CARD_W, CARD_H);
         ctx.strokeStyle = '#d4cfc6'; ctx.setLineDash([14, 8]);
-        ctx.strokeRect(MARGIN+1, y+1, CARD_W-2, CARD_H-2); ctx.setLineDash([]);
-        ctx.fillStyle = '#bbb'; ctx.font = '36px monospace'; ctx.textAlign = 'center';
-        ctx.fillText('NO IMAGE', MARGIN + CARD_W/2, y + CARD_H/2 + 12);
+        ctx.strokeRect(CARD_X+1, y+1, CARD_W-2, CARD_H-2); ctx.setLineDash([]);
+        ctx.fillStyle = '#bbb'; ctx.font = '28px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('NO IMAGE', CARD_X + CARD_W/2, y + CARD_H/2 + 10);
         res(); return;
       }
       const img = new Image();
       img.onload = () => {
-        const s = Math.max(CARD_W/img.width, CARD_H/img.height);
-        const dW = img.width*s, dH = img.height*s;
-        ctx.save(); ctx.beginPath(); ctx.rect(MARGIN, y, CARD_W, CARD_H); ctx.clip();
-        ctx.drawImage(img, MARGIN+(CARD_W-dW)/2, y+(CARD_H-dH)/2, dW, dH);
+        // Fit image into the card rect (no cropping — image is already cropped to card)
+        const s = Math.min(CARD_W / img.width, CARD_H / img.height);
+        const dW = img.width * s, dH = img.height * s;
+        ctx.save(); ctx.beginPath(); ctx.rect(CARD_X, y, CARD_W, CARD_H); ctx.clip();
+        ctx.drawImage(img, CARD_X + (CARD_W - dW)/2, y + (CARD_H - dH)/2, dW, dH);
         ctx.restore(); res();
       };
       img.src = dataUrl;
     });
 
-    const y1 = MARGIN + GAP, y2 = y1 + CARD_H + GAP;
     await drawCard(state.front, y1);
     await drawCard(state.back,  y2);
 
     // Labels
     const drawLabel = (lbl, isBack, y) => {
       ctx.fillStyle = isBack ? '#c0392b' : '#0f0f0f';
-      ctx.fillRect(MARGIN+18, y+18, isBack ? 88 : 100, 38);
+      ctx.fillRect(CARD_X+18, y+18, isBack ? 88 : 100, 38);
       ctx.fillStyle = '#fff'; ctx.font = '500 22px monospace'; ctx.textAlign = 'left';
-      ctx.fillText(lbl, MARGIN+26, y+43);
+      ctx.fillText(lbl, CARD_X+26, y+43);
     };
     drawLabel('FRONT', false, y1); drawLabel('BACK', true, y2);
 
