@@ -556,10 +556,11 @@ let facingMode = 'environment'; // rear camera
 let torchOn = false;
 let torchTrack = null;
 
-const STEADY_FRAMES_NEEDED = 14;   // ~0.7s at 20fps analysis
-const SHARP_THRESHOLD      = 22;   // Laplacian variance — mobile cameras are much lower than desktop
+const STEADY_FRAMES_NEEDED = 20;   // ~1s at 20fps analysis
+const SHARP_THRESHOLD      = 45;   // Laplacian variance — raised to reduce false triggers
 const BRIGHT_MIN           = 40;   // average brightness minimum
 const BRIGHT_MAX           = 225;  // avoid over-exposure
+const CARD_COVERAGE_MIN    = 0.55; // fraction of viewfinder grid cells needing edge activity
 
 const video      = document.getElementById('cam-video');
 const vfCanvas   = document.getElementById('vf-canvas');
@@ -732,7 +733,32 @@ function computeSharpness(W, H) {
   }
   const mean = sum / cnt;
   const variance = sum2 / cnt - mean * mean;
-  return { sharpness: variance, brightness: avgBright };
+
+  // Card presence: require edge activity spread across a 3×2 grid of the viewfinder.
+  // A blank wall or distant background will have too few active cells even when sharp.
+  const COLS = 3, ROWS = 2;
+  const cellW = Math.max(1, Math.floor(rw / COLS));
+  const cellH = Math.max(1, Math.floor(rh / ROWS));
+  const CELL_EDGE_MIN = 2.5;
+  let activeCells = 0;
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const x0 = rx + col * cellW;
+      const y0 = ry + row * cellH;
+      let lapSum = 0, lapCnt = 0;
+      for (let y = y0 + 1; y < Math.min(y0 + cellH - 1, sh - 1); y++) {
+        for (let x = x0 + 1; x < Math.min(x0 + cellW - 1, sw - 1); x++) {
+          const i = y * sw + x;
+          lapSum += Math.abs(-grey[i-sw] - grey[i-1] + 4*grey[i] - grey[i+1] - grey[i+sw]);
+          lapCnt++;
+        }
+      }
+      if (lapCnt > 0 && lapSum / lapCnt > CELL_EDGE_MIN) activeCells++;
+    }
+  }
+  const cardCoverage = activeCells / (COLS * ROWS);
+
+  return { sharpness: variance, brightness: avgBright, cardCoverage };
 }
 
 function resetProgress() {
@@ -758,11 +784,12 @@ function startAnalysis() {
     frameCount++;
     if (frameCount % 3 !== 0) { drawViewfinder(0, 128, false); return; }
 
-    const { sharpness, brightness } = computeSharpness(video.videoWidth, video.videoHeight);
+    const { sharpness, brightness, cardCoverage } = computeSharpness(video.videoWidth, video.videoHeight);
     const normalSharp = Math.min(100, (sharpness / SHARP_THRESHOLD) * 60);
     const brightOk = brightness >= BRIGHT_MIN && brightness <= BRIGHT_MAX;
     const sharpOk  = sharpness >= SHARP_THRESHOLD;
-    const ok = sharpOk && brightOk && !captured;
+    const cardOk   = cardCoverage >= CARD_COVERAGE_MIN;
+    const ok = sharpOk && brightOk && cardOk && !captured;
 
     // Update UI
     sharpFill.style.height = normalSharp + '%';
@@ -771,6 +798,8 @@ function startAnalysis() {
 
     if (!brightOk) {
       camHint.textContent = brightness < BRIGHT_MIN ? '⚠ Too dark — find better light' : '⚠ Too bright — reduce glare';
+    } else if (!cardOk) {
+      camHint.textContent = 'Place ID card flat within the frame';
     } else if (!sharpOk) {
       camHint.textContent = 'Hold steady · Move closer or adjust angle';
     } else {
