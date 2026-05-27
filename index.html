@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ID Card Document Maker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&display=swap');
+
+:root {
+  --ink:#0f0f0f; --paper:#f5f2eb; --accent:#c0392b; --steel:#2c3e50;
+  --muted:#7f8c8d; --border:#d4cfc6; --success:#27ae60; --warn:#e67e22;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;overflow-x:hidden;}
+
+/* Header */
+header{background:var(--ink);color:var(--paper);padding:14px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.35);}
+header .badge{background:var(--accent);color:#fff;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:2px;padding:3px 8px;border-radius:2px;}
+header h1{font-size:15px;font-weight:500;}
+header .sub{font-family:'DM Mono',monospace;font-size:10px;color:#888;margin-left:auto;}
+
+/* Layout */
+.app{display:grid;grid-template-columns:1fr;max-width:980px;margin:0 auto;padding:20px 14px 60px;gap:20px;}
+@media(min-width:700px){.app{grid-template-columns:340px 1fr;padding:28px 24px 80px;gap:28px;}}
+
+/* Panel */
+.panel{background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.panel-head{background:var(--steel);color:#fff;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1.5px;padding:10px 16px;text-transform:uppercase;}
+.panel-body{padding:16px;}
+
+/* Capture slot (thumbnail) */
+.capture-slot{border:2px dashed var(--border);border-radius:6px;background:#fafaf8;position:relative;overflow:hidden;margin-bottom:12px;transition:border-color .2s,background .2s;}
+.capture-slot.filled{border-style:solid;border-color:var(--success);}
+.slot-inner{aspect-ratio:85.6/54;display:flex;align-items:center;justify-content:center;gap:8px;padding:14px;}
+.slot-inner.has-img{padding:0;}
+.slot-inner img{width:100%;height:100%;object-fit:cover;display:block;}
+.slot-label{position:absolute;top:7px;left:7px;background:var(--ink);color:#fff;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:1px;padding:2px 6px;border-radius:2px;}
+.slot-label.back{background:var(--accent);}
+.slot-placeholder{display:flex;flex-direction:column;align-items:center;gap:5px;color:var(--muted);pointer-events:none;}
+.slot-placeholder svg{opacity:.4;}
+.slot-placeholder span{font-size:12px;font-weight:500;}
+.slot-placeholder small{font-family:'DM Mono',monospace;font-size:10px;opacity:.65;}
+.remove-btn{position:absolute;top:6px;right:6px;background:rgba(0,0,0,.55);border:none;color:#fff;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:13px;line-height:24px;text-align:center;display:none;}
+.capture-slot.filled:hover .remove-btn,.capture-slot.filled .remove-btn-always{display:block;}
+.capture-btn{width:100%;border:none;background:var(--steel);color:#fff;border-radius:5px;padding:10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .2s;margin-bottom:10px;}
+.capture-btn:hover{background:#1a252f;}
+.capture-btn.secondary{background:transparent;border:1px solid var(--border);color:var(--steel);margin-bottom:0;}
+.capture-btn.secondary:hover{background:#f5f2eb;}
+
+input[type=file]{display:none;}
+
+/* Settings */
+.settings{display:flex;flex-direction:column;gap:14px;}
+label.field-label{display:block;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--muted);text-transform:uppercase;margin-bottom:5px;}
+input[type=text]{width:100%;border:1px solid var(--border);border-radius:4px;padding:9px 12px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--ink);background:#fafaf8;outline:none;transition:border-color .2s;}
+input[type=text]:focus{border-color:var(--accent);background:#fff;}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;background:#fafaf8;border:1px solid var(--border);border-radius:4px;padding:10px 14px;}
+.toggle-row span{font-size:13px;font-weight:500;}
+.toggle-row small{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);}
+.toggle{position:relative;width:42px;height:22px;flex-shrink:0;}
+.toggle input{display:none;}
+.toggle-track{width:100%;height:100%;background:var(--border);border-radius:11px;transition:background .2s;cursor:pointer;display:block;}
+.toggle input:checked+.toggle-track{background:var(--ink);}
+.toggle-track::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:50%;transition:transform .2s;}
+.toggle input:checked+.toggle-track::after{transform:translateX(20px);}
+.angle-row{display:flex;align-items:center;gap:10px;}
+.angle-row input[type=range]{flex:1;accent-color:var(--accent);}
+.angle-val{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);min-width:32px;text-align:right;}
+.dl-btn{width:100%;background:var(--accent);color:#fff;border:none;border-radius:5px;padding:13px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:background .2s,transform .1s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px;}
+.dl-btn:hover{background:#a93226;}
+.dl-btn:active{transform:scale(.98);}
+.dl-btn:disabled{background:var(--muted);cursor:not-allowed;}
+
+/* A4 Preview */
+.preview-wrap{position:relative;width:100%;}
+.preview-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
+.a4-preview{width:100%;aspect-ratio:210/297;background:#fff;border:1px solid var(--border);box-shadow:0 4px 24px rgba(0,0,0,.12);position:relative;overflow:hidden;border-radius:2px;}
+.a4-preview.bw{filter:grayscale(1);}
+.a4-inner{position:absolute;inset:6%;display:flex;flex-direction:column;justify-content:center;gap:4%;}
+.card-slot-preview{width:100%;flex:0 0 auto;aspect-ratio:85.6/54;background:#f0ede6;border:1px dashed var(--border);border-radius:2px;overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-size:9px;color:#bbb;}
+.card-slot-preview img{width:100%;height:100%;object-fit:cover;display:block;}
+.stamp-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;}
+.stamp-text{font-family:'DM Mono',monospace;font-weight:500;color:rgba(192,57,43,.35);white-space:nowrap;border-top:2.5px solid rgba(192,57,43,.3);border-bottom:2.5px solid rgba(192,57,43,.3);padding:6px 0;text-transform:uppercase;letter-spacing:4px;width:160%;text-align:center;}
+.hint{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);text-align:center;margin-top:10px;}
+.status-pill{display:inline-flex;align-items:center;gap:5px;font-family:'DM Mono',monospace;font-size:10px;padding:3px 8px;border-radius:20px;margin-bottom:10px;}
+.status-pill.ok{background:#eafaf1;color:var(--success);}
+.status-pill.warn{background:#fef9e7;color:#d68910;}
+.status-dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+/* Progress overlay */
+#progress-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#fff;font-family:'DM Mono',monospace;font-size:13px;}
+#progress-overlay.show{display:flex;}
+.spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.2);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ═══════════════════════════════════════════
+   CAMERA MODAL
+═══════════════════════════════════════════ */
+#cam-modal{display:none;position:fixed;inset:0;z-index:500;background:#000;flex-direction:column;align-items:center;justify-content:center;}
+#cam-modal.open{display:flex;}
+
+#cam-video{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;}
+
+/* Viewfinder overlay */
+#cam-overlay{position:absolute;inset:0;pointer-events:none;}
+
+/* Dark mask around the card box - drawn by canvas */
+#vf-canvas{position:absolute;inset:0;width:100%;height:100%;}
+
+/* Corner markers */
+.vf-corners{position:absolute;pointer-events:none;}
+.corner{position:absolute;width:22px;height:22px;border-color:#fff;border-style:solid;transition:border-color .3s;}
+.corner.tl{top:0;left:0;border-width:3px 0 0 3px;border-radius:4px 0 0 0;}
+.corner.tr{top:0;right:0;border-width:3px 3px 0 0;border-radius:0 4px 0 0;}
+.corner.bl{bottom:0;left:0;border-width:0 0 3px 3px;border-radius:0 0 0 4px;}
+.corner.br{bottom:0;right:0;border-width:0 3px 3px 0;border-radius:0 0 4px 0;}
+.vf-corners.good .corner{border-color:#27ae60;}
+
+/* Status bar above viewfinder */
+#cam-status{position:absolute;top:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding-top:env(safe-area-inset-top,0px);padding-top:max(env(safe-area-inset-top,0px),14px);}
+#cam-side-label{background:var(--accent);color:#fff;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:2px;padding:4px 14px;border-radius:20px;margin-bottom:8px;}
+#cam-side-label.back-side{background:#1a252f;}
+#cam-hint{font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,255,255,.85);letter-spacing:.5px;text-align:center;padding:0 20px;min-height:16px;}
+
+/* Progress ring */
+#prog-wrap{position:absolute;bottom:0;left:0;right:0;display:flex;flex-direction:column;align-items:center;padding-bottom:env(safe-area-inset-bottom,0px);padding-bottom:max(env(safe-area-inset-bottom,0px),28px);}
+#prog-ring-wrap{position:relative;width:72px;height:72px;margin-bottom:12px;}
+#prog-ring-wrap svg{transform:rotate(-90deg);}
+#prog-track{fill:none;stroke:rgba(255,255,255,.18);stroke-width:5;}
+#prog-fill{fill:none;stroke:#27ae60;stroke-width:5;stroke-linecap:round;stroke-dasharray:0 1000;transition:stroke-dasharray .12s linear;}
+#prog-icon{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:22px;}
+#cam-close{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);color:#fff;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1px;padding:8px 22px;border-radius:20px;cursor:pointer;backdrop-filter:blur(8px);}
+#cam-close:hover{background:rgba(255,255,255,.25);}
+
+/* Sharpness meter (debug strip) */
+#sharp-bar-wrap{position:absolute;right:12px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;}
+#sharp-bar-bg{width:6px;height:80px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden;display:flex;align-items:flex-end;}
+#sharp-bar-fill{width:100%;background:#27ae60;border-radius:3px;transition:height .15s;}
+#sharp-label{font-family:'DM Mono',monospace;font-size:8px;color:rgba(255,255,255,.6);letter-spacing:.5px;}
+
+/* Flash on capture */
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:10;}
+@keyframes flashAnim{0%{opacity:.85}100%{opacity:0}}
+#flash.go{animation:flashAnim .35s ease-out forwards;}
+
+/* Torch button */
+#torch-btn{position:absolute;top:0;right:14px;padding-top:env(safe-area-inset-top,0px);padding-top:max(env(safe-area-inset-top,0px),14px);background:none;border:none;color:#fff;cursor:pointer;opacity:.75;font-size:22px;display:none;}
+#torch-btn.visible{display:block;}
+#torch-btn.on{opacity:1;color:#ffe066;}
+
+/* Flip camera button */
+#flip-btn{position:absolute;top:0;left:14px;padding-top:env(safe-area-inset-top,0px);padding-top:max(env(safe-area-inset-top,0px),14px);background:none;border:none;color:#fff;cursor:pointer;opacity:.75;font-size:22px;}
+#flip-btn:hover{opacity:1;}
+</style>
+</head>
+<body>
+
+<div id="progress-overlay"><div class="spinner"></div><span>Generating PDF…</span></div>
+
+<!-- ═══ CAMERA MODAL ═══ -->
+<div id="cam-modal">
+  <video id="cam-video" autoplay playsinline muted></video>
+  <canvas id="vf-canvas"></canvas>
+
+  <!-- side & hint -->
+  <div id="cam-status">
+    <div id="cam-side-label">FRONT SIDE</div>
+    <div id="cam-hint">Align card within the frame</div>
+  </div>
+
+  <!-- buttons -->
+  <button id="flip-btn" onclick="flipCamera()" title="Flip camera">⟳</button>
+  <button id="torch-btn" onclick="toggleTorch()" title="Torch">🔦</button>
+
+  <!-- sharpness meter -->
+  <div id="sharp-bar-wrap">
+    <div id="sharp-bar-bg"><div id="sharp-bar-fill" style="height:0%"></div></div>
+    <div id="sharp-label">FOCUS</div>
+  </div>
+
+  <!-- progress ring + close -->
+  <div id="prog-wrap">
+    <div id="prog-ring-wrap">
+      <svg viewBox="0 0 72 72" width="72" height="72">
+        <circle id="prog-track" cx="36" cy="36" r="30"/>
+        <circle id="prog-fill" cx="36" cy="36" r="30"/>
+      </svg>
+      <div id="prog-icon">📷</div>
+    </div>
+    <button id="cam-close" onclick="closeCamera()">CANCEL</button>
+  </div>
+
+  <div id="flash"></div>
+</div>
+
+<!-- ═══ HEADER ═══ -->
+<header>
+  <div class="badge">GOV</div>
+  <h1>ID Card Document Maker</h1>
+  <span class="sub">AUTO · LOCAL · PDF</span>
+</header>
+
+<!-- ═══ APP ═══ -->
+<div class="app">
+
+  <!-- Left -->
+  <div style="display:flex;flex-direction:column;gap:18px;">
+
+    <!-- Capture Panel -->
+    <div class="panel">
+      <div class="panel-head">📷 &nbsp;Capture ID Card</div>
+      <div class="panel-body">
+
+        <!-- FRONT -->
+        <div class="capture-slot" id="slot-front">
+          <div class="slot-inner" id="slot-front-inner">
+            <div class="slot-placeholder">
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>FRONT side not captured</span>
+              <small>Use camera below</small>
+            </div>
+          </div>
+          <div class="slot-label">FRONT</div>
+          <button class="remove-btn" onclick="removeImage(event,'front')">✕</button>
+        </div>
+        <button class="capture-btn" onclick="openCamera('front')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Scan FRONT with Camera
+        </button>
+        <button class="capture-btn secondary" onclick="document.getElementById('input-front').click()">
+          📁 &nbsp;Choose from Gallery
+        </button>
+
+        <div style="height:14px;"></div>
+
+        <!-- BACK -->
+        <div class="capture-slot" id="slot-back">
+          <div class="slot-inner" id="slot-back-inner">
+            <div class="slot-placeholder">
+              <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10" stroke-width="1.5"/></svg>
+              <span>BACK side not captured</span>
+              <small>Use camera below</small>
+            </div>
+          </div>
+          <div class="slot-label back">BACK</div>
+          <button class="remove-btn" onclick="removeImage(event,'back')">✕</button>
+        </div>
+        <button class="capture-btn" onclick="openCamera('back')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Scan BACK with Camera
+        </button>
+        <button class="capture-btn secondary" onclick="document.getElementById('input-back').click()">
+          📁 &nbsp;Choose from Gallery
+        </button>
+
+        <input type="file" id="input-front" accept="image/*" onchange="handleFile(event,'front')">
+        <input type="file" id="input-back"  accept="image/*" onchange="handleFile(event,'back')">
+      </div>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="panel">
+      <div class="panel-head">⚙️ &nbsp;Document Settings</div>
+      <div class="panel-body settings">
+        <div>
+          <label class="field-label">Watermark / Purpose Text</label>
+          <input type="text" id="stamp-text" placeholder="e.g. FOR BANK USE ONLY" value="FOR OFFICIAL USE ONLY · NOT TRANSFERABLE" oninput="updatePreview()">
+        </div>
+        <div>
+          <label class="field-label">Stamp Angle</label>
+          <div class="angle-row">
+            <input type="range" id="stamp-angle" min="-45" max="45" value="-20" oninput="updateAngle(this)">
+            <span class="angle-val" id="angle-display">−20°</span>
+          </div>
+        </div>
+        <div>
+          <label class="field-label">Colour Mode</label>
+          <div class="toggle-row">
+            <div><span>Black &amp; White</span><br><small>Greyscale output</small></div>
+            <label class="toggle">
+              <input type="checkbox" id="bw-toggle" onchange="updatePreview()">
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+        </div>
+        <div id="status-row"></div>
+        <button class="dl-btn" id="dl-btn" onclick="downloadPDF()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v13m0 0l-4-4m4 4l4-4"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+          Download PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Preview -->
+  <div class="preview-wrap">
+    <div class="preview-label">↓ &nbsp;A4 DOCUMENT PREVIEW</div>
+    <div class="a4-preview" id="a4-preview">
+      <div class="a4-inner">
+        <div class="card-slot-preview" id="prev-front">FRONT SIDE</div>
+        <div class="card-slot-preview" id="prev-back">BACK SIDE</div>
+      </div>
+      <div class="stamp-overlay" id="stamp-overlay">
+        <div class="stamp-text" id="stamp-el"></div>
+      </div>
+    </div>
+    <div class="hint">Preview updates live · PDF renders at full A4 resolution</div>
+  </div>
+
+</div>
+
+<script>
+/* ══════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════ */
+const state = { front: null, back: null };
+
+/* ══════════════════════════════════════════════
+   CAMERA ENGINE
+══════════════════════════════════════════════ */
+let camStream = null;
+let camSide = 'front';
+let animFrameId = null;
+let steadyCount = 0;
+let captured = false;
+let facingMode = 'environment'; // rear camera
+let torchOn = false;
+let torchTrack = null;
+
+const STEADY_FRAMES_NEEDED = 18;   // ~0.9s at 20fps analysis
+const SHARP_THRESHOLD      = 85;   // Laplacian variance threshold (tuned)
+const BRIGHT_MIN           = 55;   // average brightness minimum
+const BRIGHT_MAX           = 215;  // avoid over-exposure
+
+const video    = document.getElementById('cam-video');
+const vfCanvas = document.getElementById('vf-canvas');
+const vfCtx    = vfCanvas.getContext('2d');
+const flash    = document.getElementById('flash');
+const progFill = document.getElementById('prog-fill');
+const progIcon = document.getElementById('prog-icon');
+const sharpFill= document.getElementById('sharp-bar-fill');
+const camHint  = document.getElementById('cam-hint');
+const sideLabel= document.getElementById('cam-side-label');
+const torchBtn = document.getElementById('torch-btn');
+
+// Offscreen canvas for analysis
+const analysisCanvas = document.createElement('canvas');
+const aCtx = analysisCanvas.getContext('2d', { willReadFrequently: true });
+
+async function openCamera(side) {
+  camSide = side;
+  captured = false;
+  steadyCount = 0;
+  sideLabel.textContent = side === 'front' ? 'FRONT SIDE' : 'BACK SIDE';
+  sideLabel.className = side === 'back' ? 'back-side' : '';
+  resetProgress();
+
+  document.getElementById('cam-modal').classList.add('open');
+  await startStream();
+}
+
+async function startStream() {
+  stopStream();
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 }, focusMode: 'continuous' },
+      audio: false
+    });
+    video.srcObject = camStream;
+    await video.play();
+
+    // Torch support
+    torchTrack = camStream.getVideoTracks()[0];
+    const caps = torchTrack.getCapabilities ? torchTrack.getCapabilities() : {};
+    torchBtn.className = caps.torch ? 'visible' : '';
+
+    video.addEventListener('loadedmetadata', startAnalysis, { once: true });
+  } catch(err) {
+    alert('Camera not available: ' + err.message + '\n\nTry "Choose from Gallery" instead.');
+    closeCamera();
+  }
+}
+
+function stopStream() {
+  if (animFrameId) { cancelAnimationFrame(animFrameId); animFrameId = null; }
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  torchOn = false;
+}
+
+function closeCamera() {
+  stopStream();
+  document.getElementById('cam-modal').classList.remove('open');
+}
+
+async function flipCamera() {
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  await startStream();
+}
+
+async function toggleTorch() {
+  if (!torchTrack) return;
+  torchOn = !torchOn;
+  try {
+    await torchTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
+    torchBtn.className = 'visible' + (torchOn ? ' on' : '');
+  } catch(e) { torchOn = false; }
+}
+
+/* ── Viewfinder drawing ── */
+let vfBox = { x:0, y:0, w:0, h:0 };
+
+function drawViewfinder(sharp, bright, ok) {
+  const W = vfCanvas.width, H = vfCanvas.height;
+
+  // Card aspect ratio
+  const cardAspect = 85.6 / 54;
+  const padding = Math.min(W, H) * 0.06;
+  let boxW = W - padding * 2;
+  let boxH = boxW / cardAspect;
+  if (boxH > H * 0.58) { boxH = H * 0.58; boxW = boxH * cardAspect; }
+  const boxX = (W - boxW) / 2;
+  const boxY = (H - boxH) / 2;
+  vfBox = { x: boxX, y: boxY, w: boxW, h: boxH };
+
+  vfCtx.clearRect(0, 0, W, H);
+
+  // Dark mask
+  vfCtx.fillStyle = 'rgba(0,0,0,0.52)';
+  vfCtx.beginPath();
+  vfCtx.rect(0, 0, W, H);
+  vfCtx.roundRect(boxX, boxY, boxW, boxH, 8);
+  vfCtx.fill('evenodd');
+
+  // Box border
+  const borderColor = ok ? '#27ae60' : sharp > SHARP_THRESHOLD * 0.6 ? '#e67e22' : 'rgba(255,255,255,0.55)';
+  vfCtx.strokeStyle = borderColor;
+  vfCtx.lineWidth = 2;
+  vfCtx.beginPath();
+  vfCtx.roundRect(boxX, boxY, boxW, boxH, 8);
+  vfCtx.stroke();
+
+  // Corner marks
+  const cs = 22, cw = 3.5, cr = 6;
+  const corners = [[boxX,boxY],[boxX+boxW,boxY],[boxX,boxY+boxH],[boxX+boxW,boxY+boxH]];
+  const cornerPaths = [
+    (x,y)=>[[x,y+cs],[x,y],[x+cs,y]],
+    (x,y)=>[[x-cs,y],[x,y],[x,y+cs]],
+    (x,y)=>[[x,y-cs],[x,y],[x+cs,y]],
+    (x,y)=>[[x-cs,y],[x,y],[x,y-cs]],
+  ];
+  vfCtx.strokeStyle = ok ? '#27ae60' : '#fff';
+  vfCtx.lineWidth = cw;
+  vfCtx.lineCap = 'round';
+  corners.forEach(([cx,cy], i) => {
+    const pts = cornerPaths[i](cx,cy);
+    vfCtx.beginPath();
+    vfCtx.moveTo(pts[0][0],pts[0][1]);
+    vfCtx.lineTo(pts[1][0],pts[1][1]);
+    vfCtx.lineTo(pts[2][0],pts[2][1]);
+    vfCtx.stroke();
+  });
+
+  // Update corners div (reuse canvas corner approach via absolute positioned overlay)
+  positionCornerDiv();
+}
+
+function positionCornerDiv() {
+  // We use canvas drawing only – no separate DOM corners needed
+}
+
+/* ── Sharpness (Laplacian variance) ── */
+function computeSharpness(W, H) {
+  // Sample a smaller canvas for speed
+  const sw = 160, sh = Math.round(160 / (W/H));
+  analysisCanvas.width = sw; analysisCanvas.height = sh;
+  aCtx.drawImage(video, 0, 0, sw, sh);
+  const d = aCtx.getImageData(0, 0, sw, sh).data;
+
+  // Greyscale
+  const grey = new Float32Array(sw * sh);
+  let sumBright = 0;
+  for (let i = 0; i < sw * sh; i++) {
+    const g = d[i*4]*0.299 + d[i*4+1]*0.587 + d[i*4+2]*0.114;
+    grey[i] = g;
+    sumBright += g;
+  }
+  const avgBright = sumBright / grey.length;
+
+  // Laplacian variance over inner crop (card region area)
+  // Map vfBox to analysisCanvas coords
+  const scaleX = sw / video.videoWidth;
+  const scaleY = sh / video.videoHeight;
+  const rx = Math.max(1, Math.round(vfBox.x * scaleX));
+  const ry = Math.max(1, Math.round(vfBox.y * scaleY));
+  const rw = Math.min(sw - rx - 1, Math.round(vfBox.w * scaleX));
+  const rh = Math.min(sh - ry - 1, Math.round(vfBox.h * scaleY));
+
+  let sum = 0, sum2 = 0, cnt = 0;
+  for (let y = ry; y < ry + rh; y++) {
+    for (let x = rx; x < rx + rw; x++) {
+      const i = y * sw + x;
+      const lap = -grey[i-sw] - grey[i-1] + 4*grey[i] - grey[i+1] - grey[i+sw];
+      sum += lap; sum2 += lap * lap; cnt++;
+    }
+  }
+  const mean = sum / cnt;
+  const variance = sum2 / cnt - mean * mean;
+  return { sharpness: variance, brightness: avgBright };
+}
+
+/* ── Progress ring ── */
+const CIRC = 2 * Math.PI * 30; // r=30
+function setProgress(frac) {
+  const d = CIRC * Math.max(0, Math.min(1, frac));
+  progFill.style.strokeDasharray = `${d} ${CIRC}`;
+  progFill.style.stroke = frac >= 1 ? '#fff' : '#27ae60';
+}
+function resetProgress() {
+  steadyCount = 0;
+  setProgress(0);
+  progIcon.textContent = '📷';
+}
+
+/* ── Analysis loop ── */
+function startAnalysis() {
+  let frameCount = 0;
+  function loop() {
+    animFrameId = requestAnimationFrame(loop);
+    if (video.readyState < 2) return;
+
+    // Resize canvas to match display
+    const rect = video.getBoundingClientRect();
+    if (vfCanvas.width !== rect.width || vfCanvas.height !== rect.height) {
+      vfCanvas.width = rect.width;
+      vfCanvas.height = rect.height;
+    }
+
+    // Only analyse every 3rd frame for performance
+    frameCount++;
+    if (frameCount % 3 !== 0) { drawViewfinder(0, 128, false); return; }
+
+    const { sharpness, brightness } = computeSharpness(video.videoWidth, video.videoHeight);
+    const normalSharp = Math.min(100, (sharpness / SHARP_THRESHOLD) * 60);
+    const brightOk = brightness >= BRIGHT_MIN && brightness <= BRIGHT_MAX;
+    const sharpOk  = sharpness >= SHARP_THRESHOLD;
+    const ok = sharpOk && brightOk && !captured;
+
+    // Update UI
+    sharpFill.style.height = normalSharp + '%';
+    sharpFill.style.background = sharpOk ? '#27ae60' : sharpness > SHARP_THRESHOLD * 0.5 ? '#e67e22' : '#c0392b';
+    drawViewfinder(sharpness, brightness, ok);
+
+    if (!brightOk) {
+      camHint.textContent = brightness < BRIGHT_MIN ? '⚠ Too dark — find better light' : '⚠ Too bright — reduce glare';
+    } else if (!sharpOk) {
+      camHint.textContent = 'Hold steady · Move closer or adjust angle';
+    } else {
+      camHint.textContent = steadyCount < 5 ? 'Good — keep holding…' : 'Almost there…';
+    }
+
+    if (ok) {
+      steadyCount++;
+      setProgress(steadyCount / STEADY_FRAMES_NEEDED);
+      if (steadyCount >= STEADY_FRAMES_NEEDED && !captured) {
+        captured = true;
+        doCapture();
+      }
+    } else {
+      if (steadyCount > 0) steadyCount = Math.max(0, steadyCount - 2);
+      setProgress(steadyCount / STEADY_FRAMES_NEEDED);
+    }
+  }
+  loop();
+}
+
+/* ── Capture ── */
+function doCapture() {
+  progIcon.textContent = '✓';
+  setProgress(1);
+  camHint.textContent = '✓ Captured!';
+
+  // Flash
+  flash.classList.remove('go');
+  void flash.offsetWidth;
+  flash.classList.add('go');
+
+  // Draw full-res frame
+  const cap = document.createElement('canvas');
+  cap.width = video.videoWidth;
+  cap.height = video.videoHeight;
+  cap.getContext('2d').drawImage(video, 0, 0);
+
+  // Crop to viewfinder box (map vfBox from display to video coords)
+  const rect = video.getBoundingClientRect();
+  const scaleX = video.videoWidth  / rect.width;
+  const scaleY = video.videoHeight / rect.height;
+
+  // video object-fit:cover offset compensation
+  const vidAspect = video.videoWidth / video.videoHeight;
+  const rectAspect = rect.width / rect.height;
+  let offX = 0, offY = 0, renderW = rect.width, renderH = rect.height;
+  if (vidAspect > rectAspect) {
+    renderW = rect.height * vidAspect;
+    offX = (rect.width - renderW) / 2;
+  } else {
+    renderH = rect.width / vidAspect;
+    offY = (rect.height - renderH) / 2;
+  }
+  const vidScaleX = video.videoWidth / renderW;
+  const vidScaleY = video.videoHeight / renderH;
+
+  const cropX = Math.max(0, (vfBox.x - offX) * vidScaleX);
+  const cropY = Math.max(0, (vfBox.y - offY) * vidScaleY);
+  const cropW = vfBox.w * vidScaleX;
+  const cropH = vfBox.h * vidScaleY;
+
+  const cropped = document.createElement('canvas');
+  cropped.width = Math.round(cropW);
+  cropped.height = Math.round(cropH);
+  cropped.getContext('2d').drawImage(cap, cropX, cropY, cropW, cropH, 0, 0, cropped.width, cropped.height);
+
+  const dataUrl = cropped.toDataURL('image/jpeg', 0.96);
+  state[camSide] = dataUrl;
+  updateSlot(camSide);
+  updatePreview();
+  updateStatus();
+
+  setTimeout(closeCamera, 700);
+}
+
+/* ══════════════════════════════════════════════
+   THUMBNAIL SLOTS
+══════════════════════════════════════════════ */
+function handleFile(e, side) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    state[side] = ev.target.result;
+    updateSlot(side);
+    updatePreview();
+    updateStatus();
+  };
+  reader.readAsDataURL(file);
+}
+
+function updateSlot(side) {
+  const slot  = document.getElementById('slot-' + side);
+  const inner = document.getElementById('slot-' + side + '-inner');
+  if (state[side]) {
+    inner.innerHTML = `<img src="${state[side]}" alt="${side}">`;
+    inner.classList.add('has-img');
+    slot.classList.add('filled');
+  } else {
+    inner.classList.remove('has-img');
+    slot.classList.remove('filled');
+  }
+}
+
+function removeImage(e, side) {
+  e.stopPropagation();
+  state[side] = null;
+  document.getElementById('input-' + side).value = '';
+  const inner = document.getElementById('slot-' + side + '-inner');
+  const icon = side === 'front'
+    ? `<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>`
+    : `<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10" stroke-width="1.5"/></svg>`;
+  inner.innerHTML = `<div class="slot-placeholder">${icon}<span>${side.toUpperCase()} side not captured</span><small>Use camera below</small></div>`;
+  inner.classList.remove('has-img');
+  document.getElementById('slot-' + side).classList.remove('filled');
+  updatePreview(); updateStatus();
+}
+
+/* ══════════════════════════════════════════════
+   PREVIEW
+══════════════════════════════════════════════ */
+function updateAngle(el) {
+  const v = parseInt(el.value);
+  document.getElementById('angle-display').textContent = (v >= 0 ? '+' : '') + v + '°';
+  updatePreview();
+}
+
+function updatePreview() {
+  const bw = document.getElementById('bw-toggle').checked;
+  document.getElementById('a4-preview').classList.toggle('bw', bw);
+  document.getElementById('prev-front').innerHTML = state.front ? `<img src="${state.front}" alt="front">` : 'FRONT SIDE';
+  document.getElementById('prev-back').innerHTML  = state.back  ? `<img src="${state.back}"  alt="back">`  : 'BACK SIDE';
+
+  const text = document.getElementById('stamp-text').value.trim();
+  const angle = document.getElementById('stamp-angle').value;
+  const stampEl = document.getElementById('stamp-el');
+  const a4 = document.getElementById('a4-preview');
+  if (text) {
+    stampEl.textContent = text;
+    stampEl.style.transform = `rotate(${angle}deg)`;
+    const w = a4.offsetWidth;
+    stampEl.style.fontSize = Math.max(9, w * 0.028) + 'px';
+    stampEl.style.letterSpacing = Math.max(2, w * 0.006) + 'px';
+    document.getElementById('stamp-overlay').style.display = '';
+  } else {
+    document.getElementById('stamp-overlay').style.display = 'none';
+  }
+}
+
+function updateStatus() {
+  const both = state.front && state.back;
+  const one  = state.front || state.back;
+  const row  = document.getElementById('status-row');
+  if (both) row.innerHTML = `<div class="status-pill ok"><div class="status-dot"></div>Both sides captured — ready to export</div>`;
+  else if (one) row.innerHTML = `<div class="status-pill warn"><div class="status-dot"></div>Capture the other side to complete</div>`;
+  else row.innerHTML = '';
+}
+
+/* ══════════════════════════════════════════════
+   PDF
+══════════════════════════════════════════════ */
+async function downloadPDF() {
+  const btn = document.getElementById('dl-btn');
+  const overlay = document.getElementById('progress-overlay');
+  btn.disabled = true; overlay.classList.add('show');
+  try {
+    const bw = document.getElementById('bw-toggle').checked;
+    const text = document.getElementById('stamp-text').value.trim();
+    const angle = parseFloat(document.getElementById('stamp-angle').value);
+    const W = 2480, H = 3508; // A4 @ 300dpi
+    const MARGIN = W * 0.08;
+    const CARD_W = W - MARGIN * 2;
+    const CARD_H = CARD_W * (54 / 85.6);
+    const GAP = (H - MARGIN * 2 - CARD_H * 2) / 3;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+    const drawCard = (dataUrl, y) => new Promise(res => {
+      if (!dataUrl) {
+        ctx.fillStyle = '#f0ede6'; ctx.fillRect(MARGIN, y, CARD_W, CARD_H);
+        ctx.strokeStyle = '#d4cfc6'; ctx.setLineDash([14, 8]);
+        ctx.strokeRect(MARGIN+1, y+1, CARD_W-2, CARD_H-2); ctx.setLineDash([]);
+        ctx.fillStyle = '#bbb'; ctx.font = '36px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('NO IMAGE', MARGIN + CARD_W/2, y + CARD_H/2 + 12);
+        res(); return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.max(CARD_W/img.width, CARD_H/img.height);
+        const dW = img.width*s, dH = img.height*s;
+        ctx.save(); ctx.beginPath(); ctx.rect(MARGIN, y, CARD_W, CARD_H); ctx.clip();
+        ctx.drawImage(img, MARGIN+(CARD_W-dW)/2, y+(CARD_H-dH)/2, dW, dH);
+        ctx.restore(); res();
+      };
+      img.src = dataUrl;
+    });
+
+    const y1 = MARGIN + GAP, y2 = y1 + CARD_H + GAP;
+    await drawCard(state.front, y1);
+    await drawCard(state.back,  y2);
+
+    // Labels
+    const drawLabel = (lbl, isBack, y) => {
+      ctx.fillStyle = isBack ? '#c0392b' : '#0f0f0f';
+      ctx.fillRect(MARGIN+18, y+18, isBack ? 88 : 100, 38);
+      ctx.fillStyle = '#fff'; ctx.font = '500 22px monospace'; ctx.textAlign = 'left';
+      ctx.fillText(lbl, MARGIN+26, y+43);
+    };
+    drawLabel('FRONT', false, y1); drawLabel('BACK', true, y2);
+
+    // Stamp
+    if (text) {
+      ctx.save(); ctx.translate(W/2, H/2); ctx.rotate(angle*Math.PI/180);
+      const fs = 80; ctx.font = `500 ${fs}px monospace`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(text).width + 120;
+      ctx.strokeStyle = 'rgba(192,57,43,0.30)'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.moveTo(-tw/2, -fs*.85); ctx.lineTo(tw/2, -fs*.85); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-tw/2,  fs*.85); ctx.lineTo(tw/2,  fs*.85); ctx.stroke();
+      ctx.fillStyle = 'rgba(192,57,43,0.28)'; ctx.fillText(text, 0, 0);
+      ctx.restore();
+    }
+
+    if (bw) {
+      const id = ctx.getImageData(0,0,W,H); const d = id.data;
+      for (let i=0;i<d.length;i+=4) { const g=d[i]*.299+d[i+1]*.587+d[i+2]*.114; d[i]=d[i+1]=d[i+2]=g; }
+      ctx.putImageData(id,0,0);
+    }
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.94), 'JPEG', 0, 0, 210, 297);
+    pdf.save('id-card-document.pdf');
+  } catch(err) {
+    alert('PDF error: ' + err.message); console.error(err);
+  } finally {
+    btn.disabled = false; overlay.classList.remove('show');
+  }
+}
+
+window.addEventListener('resize', updatePreview);
+updatePreview(); updateStatus();
+</script>
+</body>
+</html>
