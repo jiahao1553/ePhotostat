@@ -588,10 +588,13 @@ function cropHitTest(cx, cy) {
   return null;
 }
 
-function getEventPos(e) {
+const TOUCH_OFFSET_Y = -52; // shift control point above finger on mobile
+
+function getEventPos(e, withOffset = false) {
   const rect = cropCanvas.getBoundingClientRect();
   const src  = e.touches ? e.touches[0] : e;
-  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+  const dy   = (withOffset && e.touches) ? TOUCH_OFFSET_Y : 0;
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top + dy };
 }
 
 cropCanvas.addEventListener('mousedown', onCropDown);
@@ -604,36 +607,43 @@ document.addEventListener('touchend', onCropUp);
 function onCropDown(e) {
   if (!cropModal.classList.contains('open')) return;
   e.preventDefault();
-  const pos = getEventPos(e);
+  const rawPos = getEventPos(e);           // raw: for hit testing (under the finger)
+  const offPos = getEventPos(e, true);     // offset: control point above finger
 
   if (crop.perspMode) {
     for (const key of ['tl','tr','bl','br']) {
       const cp = i2c(perspQuad[key].x, perspQuad[key].y);
-      if (Math.hypot(pos.x - cp.x, pos.y - cp.y) <= HANDLE_R + 6) {
-        crop.drag = 'p_' + key; return;
+      if (Math.hypot(rawPos.x - cp.x, rawPos.y - cp.y) <= HANDLE_R + 6) {
+        crop.drag = 'p_' + key;
+        // store original quad point + offset drag origin for delta-based movement
+        crop.dragStart = { origPt: { ...perspQuad[key] }, dragOrigin: offPos };
+        return;
       }
     }
     return;
   }
 
-  const hit = cropHitTest(pos.x, pos.y);
+  const hit = cropHitTest(rawPos.x, rawPos.y);
   if (!hit) return;
   crop.drag = hit;
-  const ip = c2i(pos.x, pos.y);
+  const ip = c2i(offPos.x, offPos.y);
   crop.dragStart = { ...ip, origX: crop.x, origY: crop.y, origW: crop.w, origH: crop.h };
 }
 
 function onCropMove(e) {
   if (!crop.drag) return;
   e.preventDefault();
-  const pos = getEventPos(e);
+  const pos = getEventPos(e, true);  // offset position for all drag movement
 
   if (crop.drag.startsWith('p_')) {
     const key = crop.drag.slice(2);
-    const ip = c2i(pos.x, pos.y);
+    const ds  = crop.dragStart;
+    // delta-based: move quad corner by how far the offset point has moved from drag origin
+    const dxI = c2i(pos.x, pos.y).x - c2i(ds.dragOrigin.x, ds.dragOrigin.y).x;
+    const dyI = c2i(pos.x, pos.y).y - c2i(ds.dragOrigin.x, ds.dragOrigin.y).y;
     perspQuad[key] = {
-      x: Math.max(0, Math.min(crop.imgW, ip.x)),
-      y: Math.max(0, Math.min(crop.imgH, ip.y)),
+      x: Math.max(0, Math.min(crop.imgW, ds.origPt.x + dxI)),
+      y: Math.max(0, Math.min(crop.imgH, ds.origPt.y + dyI)),
     };
     drawCropFrame();
     return;
