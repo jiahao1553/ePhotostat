@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ID Card Document Maker</title>
+<title>ID &amp; Passport Document Maker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&display=swap');
@@ -29,6 +29,12 @@ header .sub{font-family:'DM Mono',monospace;font-size:10px;color:#888;margin-lef
 .panel{background:#fff;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
 .panel-head{background:var(--steel);color:#fff;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:1.5px;padding:10px 16px;text-transform:uppercase;}
 .panel-body{padding:16px;}
+
+/* Document type selector */
+.doc-type-row{display:flex;gap:8px;margin-bottom:14px;}
+.doc-type-btn{flex:1;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:4px;padding:8px 6px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1px;cursor:pointer;transition:all .15s;text-transform:uppercase;}
+.doc-type-btn.active{background:var(--steel);border-color:var(--steel);color:#fff;}
+.doc-type-btn:hover:not(.active){background:#f5f2eb;}
 
 /* Capture slot (thumbnail) */
 .capture-slot{border:2px dashed var(--border);border-radius:6px;background:#fafaf8;position:relative;overflow:hidden;margin-bottom:12px;transition:border-color .2s,background .2s;}
@@ -80,7 +86,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 .preview-label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
 .a4-preview{width:100%;aspect-ratio:210/297;background:#fff;border:1px solid var(--border);box-shadow:0 4px 24px rgba(0,0,0,.12);position:relative;overflow:hidden;border-radius:2px;}
 .a4-preview.bw{filter:grayscale(1);}
-.a4-inner{position:absolute;inset:6%;display:flex;flex-direction:column;justify-content:center;gap:4%;}
+.a4-inner{position:absolute;inset:6%;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:4%;}
 .card-slot-preview{width:100%;flex:0 0 auto;aspect-ratio:85.6/54;background:#f0ede6;border:1px dashed var(--border);border-radius:2px;overflow:hidden;display:flex;align-items:center;justify-content:center;font-family:'DM Mono',monospace;font-size:9px;color:#bbb;}
 .card-slot-preview img{width:100%;height:100%;object-fit:cover;display:block;}
 .stamp-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;}
@@ -216,7 +222,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
   <!-- side & hint -->
   <div id="cam-status">
     <div id="cam-side-label">FRONT SIDE</div>
-    <div id="cam-hint">Align card within the frame</div>
+    <div id="cam-hint">Align document within the frame</div>
   </div>
 
   <!-- buttons -->
@@ -242,7 +248,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 <!-- ═══ HEADER ═══ -->
 <header>
   <div class="badge">GOV</div>
-  <h1>ID Card Document Maker</h1>
+  <h1>ID &amp; Passport Document Maker</h1>
   <span class="sub">AUTO · LOCAL · PDF</span>
 </header>
 
@@ -254,51 +260,57 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 
     <!-- Capture Panel -->
     <div class="panel">
-      <div class="panel-head">📷 &nbsp;Capture ID Card</div>
+      <div class="panel-head" id="capture-panel-head">📷 &nbsp;Capture ID Card</div>
       <div class="panel-body">
 
-        <!-- FRONT -->
+        <!-- DOCUMENT TYPE SELECTOR -->
+        <div class="doc-type-row">
+          <button class="doc-type-btn active" id="btn-ic" onclick="switchDocType('ic')">🪪 &nbsp;IC / NRIC</button>
+          <button class="doc-type-btn" id="btn-passport" onclick="switchDocType('passport')">📕 &nbsp;Passport</button>
+        </div>
+
+        <!-- FRONT / PHOTO slot -->
         <div class="capture-slot" id="slot-front">
           <div class="slot-inner" id="slot-front-inner">
             <div class="slot-placeholder">
               <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
-              <span>FRONT side not captured</span>
+              <span id="placeholder-front-text">FRONT side not captured</span>
               <small>Use camera below</small>
             </div>
           </div>
-          <div class="slot-label">FRONT</div>
+          <div class="slot-label" id="label-front">FRONT</div>
           <button class="edit-btn"   onclick="openCropModal(state.front,'front')">✎</button>
           <button class="remove-btn" onclick="removeImage(event,'front')">✕</button>
         </div>
         <button class="capture-btn" onclick="openCamera('front')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          Scan FRONT with Camera
+          Scan <span id="scan-label-front">FRONT</span> with Camera
         </button>
         <button class="capture-btn secondary" onclick="document.getElementById('input-front').click()">
-          📁 &nbsp;Choose from Gallery
+          📁 &nbsp;Choose <span id="gallery-label-front">FRONT</span> from Gallery
         </button>
 
         <div style="height:14px;"></div>
 
-        <!-- BACK -->
+        <!-- BACK / VISA slot -->
         <div class="capture-slot" id="slot-back">
           <div class="slot-inner" id="slot-back-inner">
             <div class="slot-placeholder">
               <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10" stroke-width="1.5"/></svg>
-              <span>BACK side not captured</span>
+              <span id="placeholder-back-text">BACK side not captured</span>
               <small>Use camera below</small>
             </div>
           </div>
-          <div class="slot-label back">BACK</div>
+          <div class="slot-label back" id="label-back">BACK</div>
           <button class="edit-btn"   onclick="openCropModal(state.back,'back')">✎</button>
           <button class="remove-btn" onclick="removeImage(event,'back')">✕</button>
         </div>
         <button class="capture-btn" onclick="openCamera('back')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-          Scan BACK with Camera
+          Scan <span id="scan-label-back">BACK</span> with Camera
         </button>
         <button class="capture-btn secondary" onclick="document.getElementById('input-back').click()">
-          📁 &nbsp;Choose from Gallery
+          📁 &nbsp;Choose <span id="gallery-label-back">BACK</span> from Gallery
         </button>
 
         <input type="file" id="input-front" accept="image/*" onchange="handleFile(event,'front')">
@@ -344,7 +356,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
   <div class="preview-wrap">
     <div class="preview-label">↓ &nbsp;A4 DOCUMENT PREVIEW</div>
     <div class="a4-preview" id="a4-preview">
-      <div class="a4-inner">
+      <div class="a4-inner" id="a4-inner">
         <div class="card-slot-preview" id="prev-front">FRONT SIDE</div>
         <div class="card-slot-preview" id="prev-back">BACK SIDE</div>
       </div>
@@ -352,16 +364,36 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
         <div class="stamp-text" id="stamp-el"></div>
       </div>
     </div>
-    <div class="hint">Preview updates live · PDF renders cards at actual 85.6×54 mm size</div>
+    <div class="hint" id="doc-hint">Preview updates live · PDF renders cards at actual 85.6×54 mm size</div>
   </div>
 
 </div>
 
 <script>
 /* ══════════════════════════════════════════════
-   STATE
+   STATE & DOC TYPE
 ══════════════════════════════════════════════ */
-const state = { front: null, back: null };
+const state = { front: null, back: null, docType: 'ic' };
+
+const DOC_TYPES = {
+  ic: {
+    w: 85.6, h: 54,
+    label1: 'FRONT', label2: 'BACK',
+    title: 'ID Card',
+    hintText: 'PDF renders cards at actual 85.6×54 mm size',
+    camSuffix: 'SIDE',
+  },
+  passport: {
+    w: 88, h: 125,
+    label1: 'PHOTO', label2: 'VISA',
+    title: 'Passport',
+    hintText: 'PDF renders passport pages at actual 88×125 mm size',
+    camSuffix: 'PAGE',
+  },
+};
+
+function getDocType() { return DOC_TYPES[state.docType]; }
+function getCardAspect() { const d = getDocType(); return d.w / d.h; }
 
 /* ══════════════════════════════════════════════
    CROP MODAL
@@ -370,8 +402,7 @@ const cropModal  = document.getElementById('crop-modal');
 const cropCanvas = document.getElementById('crop-canvas');
 const cropCtx    = cropCanvas.getContext('2d');
 
-const CARD_ASPECT = 85.6 / 54;
-const HANDLE_R    = 12; // hit radius for corner handles in canvas px
+const HANDLE_R = 12; // hit radius for corner handles in canvas px
 
 const crop = {
   img: null, origImg: null, imgW: 0, imgH: 0,
@@ -379,6 +410,7 @@ const crop = {
   side: null,
   drag: null, dragStart: null,
   rotation: 0, perspMode: false, removeBg: false,
+  aspect: 85.6 / 54, // set per-session from current doc type
 };
 // 4-corner quad for perspective correction (image pixel coords)
 const perspQuad = { tl:{x:0,y:0}, tr:{x:0,y:0}, bl:{x:0,y:0}, br:{x:0,y:0} };
@@ -392,6 +424,7 @@ function openCropModal(dataUrl, side, initRect = null) {
     crop.rotation = 0;
     crop.perspMode = false;
     crop.removeBg  = false;
+    crop.aspect    = getCardAspect();
     crop._initRect = initRect; // stored so _buildRotatedImage can use it
     document.getElementById('rot-slider').value = 0;
     document.getElementById('rot-display').textContent = '0°';
@@ -434,18 +467,18 @@ function _buildRotatedImage() {
   if (cH > maxH) { cH = maxH; cW = maxH * ia; }
   cropCanvas.width  = Math.round(cW);
   cropCanvas.height = Math.round(cH);
-  // Reset crop rect to initRect (camera capture pre-detection) or 85% centred
+  // Reset crop rect to initRect (camera capture pre-detection) or centred using current aspect
   const ir = (crop.rotation === 0) ? crop._initRect : null;
   if (ir) {
     crop.x = ir.x; crop.y = ir.y; crop.w = ir.w; crop.h = ir.h;
-  } else if (CARD_ASPECT < crop.imgW / crop.imgH) {
+  } else if (crop.aspect < crop.imgW / crop.imgH) {
     crop.h = crop.imgH * 0.85;
-    crop.w = crop.h * CARD_ASPECT;
+    crop.w = crop.h * crop.aspect;
     crop.x = (crop.imgW - crop.w) / 2;
     crop.y = (crop.imgH - crop.h) / 2;
   } else {
     crop.w = crop.imgW * 0.85;
-    crop.h = crop.w / CARD_ASPECT;
+    crop.h = crop.w / crop.aspect;
     crop.x = (crop.imgW - crop.w) / 2;
     crop.y = (crop.imgH - crop.h) / 2;
   }
@@ -476,7 +509,7 @@ function toggleCropOpt(key, btnId) {
   if (key === 'perspMode') {
     _initPerspQuad(); // seed handles from current crop rect
     document.getElementById('crop-hint').textContent = crop.perspMode
-      ? 'Drag 4 corners onto the card edges · Confirm to straighten'
+      ? 'Drag 4 corners onto the document edges · Confirm to straighten'
       : 'Drag to reposition · Drag corners to resize';
     drawCropFrame();
   }
@@ -661,26 +694,26 @@ function onCropMove(e) {
     let nx = crop.x, ny = crop.y, nw = crop.w, nh = crop.h;
     if (crop.drag === 'br') {
       nw = Math.max(40, ds.origW + dx);
-      nh = nw / CARD_ASPECT;
+      nh = nw / crop.aspect;
     } else if (crop.drag === 'bl') {
       nw = Math.max(40, ds.origW - dx);
-      nh = nw / CARD_ASPECT;
+      nh = nw / crop.aspect;
       nx = ds.origX + ds.origW - nw;
     } else if (crop.drag === 'tr') {
       nw = Math.max(40, ds.origW + dx);
-      nh = nw / CARD_ASPECT;
+      nh = nw / crop.aspect;
       ny = ds.origY + ds.origH - nh;
     } else if (crop.drag === 'tl') {
       nw = Math.max(40, ds.origW - dx);
-      nh = nw / CARD_ASPECT;
+      nh = nw / crop.aspect;
       nx = ds.origX + ds.origW - nw;
       ny = ds.origY + ds.origH - nh;
     }
     // Clamp to image bounds
     nx = Math.max(0, nx);
     ny = Math.max(0, ny);
-    if (nx + nw > IW) { nw = IW - nx; nh = nw / CARD_ASPECT; }
-    if (ny + nh > IH) { nh = IH - ny; nw = nh * CARD_ASPECT; }
+    if (nx + nw > IW) { nw = IW - nx; nh = nw / crop.aspect; }
+    if (ny + nh > IH) { nh = IH - ny; nw = nh * crop.aspect; }
     crop.x = nx; crop.y = ny; crop.w = nw; crop.h = nh;
   }
 
@@ -848,7 +881,10 @@ async function openCamera(side) {
   camSide = side;
   captured = false;
   steadyCount = 0;
-  sideLabel.textContent = side === 'front' ? 'FRONT SIDE' : 'BACK SIDE';
+
+  const dt = getDocType();
+  const lbl = side === 'front' ? dt.label1 : dt.label2;
+  sideLabel.textContent = lbl + ' ' + dt.camSuffix;
   sideLabel.className = side === 'back' ? 'back-side' : '';
   resetProgress();
 
@@ -909,12 +945,13 @@ let vfBox = { x:0, y:0, w:0, h:0 };
 function drawViewfinder(sharp, bright, ok) {
   const W = vfCanvas.width, H = vfCanvas.height;
 
-  // Card aspect ratio
-  const cardAspect = 85.6 / 54;
+  const cardAspect = getCardAspect();
   const padding = Math.min(W, H) * 0.06;
   let boxW = W - padding * 2;
   let boxH = boxW / cardAspect;
-  if (boxH > H * 0.58) { boxH = H * 0.58; boxW = boxH * cardAspect; }
+  // Portrait documents (passport) need more vertical room
+  const maxBoxH = H * (cardAspect < 1 ? 0.72 : 0.60);
+  if (boxH > maxBoxH) { boxH = maxBoxH; boxW = boxH * cardAspect; }
   const boxX = (W - boxW) / 2;
   const boxY = (H - boxH) / 2;
   vfBox = { x: boxX, y: boxY, w: boxW, h: boxH };
@@ -1150,7 +1187,7 @@ function startAnalysis() {
     if (!brightOk) {
       camHint.textContent = brightness < BRIGHT_MIN ? '⚠ Too dark — find better light' : '⚠ Too bright — reduce glare';
     } else if (!cardOk) {
-      camHint.textContent = 'Place ID card flat within the frame';
+      camHint.textContent = 'Place document flat within the frame';
     } else if (!sharpOk) {
       camHint.textContent = 'Hold steady · Move closer or adjust angle';
     } else {
@@ -1266,12 +1303,69 @@ function removeImage(e, side) {
   state[side] = null;
   document.getElementById('input-' + side).value = '';
   const inner = document.getElementById('slot-' + side + '-inner');
+  const dt = getDocType();
+  const lbl = (side === 'front' ? dt.label1 : dt.label2).toUpperCase();
+  const suffix = state.docType === 'passport' ? 'page' : 'side';
   const icon = side === 'front'
     ? `<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="12" cy="12" r="3"/></svg>`
     : `<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10" stroke-width="1.5"/></svg>`;
-  inner.innerHTML = `<div class="slot-placeholder">${icon}<span>${side.toUpperCase()} side not captured</span><small>Use camera below</small></div>`;
+  inner.innerHTML = `<div class="slot-placeholder">${icon}<span>${lbl} ${suffix} not captured</span><small>Use camera below</small></div>`;
   inner.classList.remove('has-img');
   document.getElementById('slot-' + side).classList.remove('filled');
+  updatePreview(); updateStatus();
+}
+
+/* ══════════════════════════════════════════════
+   DOCUMENT TYPE SWITCH
+══════════════════════════════════════════════ */
+function switchDocType(type) {
+  state.docType = type;
+  const dt = getDocType();
+  const isPassport = type === 'passport';
+
+  // Toggle button states
+  document.getElementById('btn-ic').classList.toggle('active', !isPassport);
+  document.getElementById('btn-passport').classList.toggle('active', isPassport);
+
+  // Panel header
+  document.getElementById('capture-panel-head').textContent = '📷  Capture ' + dt.title;
+
+  // Slot labels
+  document.getElementById('label-front').textContent = dt.label1;
+  document.getElementById('label-back').textContent = dt.label2;
+
+  // Slot inner aspect ratio (override CSS default 85.6/54)
+  const ratio = dt.w + '/' + dt.h;
+  document.getElementById('slot-front-inner').style.aspectRatio = ratio;
+  document.getElementById('slot-back-inner').style.aspectRatio = ratio;
+
+  // Button text labels
+  document.getElementById('scan-label-front').textContent = dt.label1;
+  document.getElementById('scan-label-back').textContent = dt.label2;
+  document.getElementById('gallery-label-front').textContent = dt.label1;
+  document.getElementById('gallery-label-back').textContent = dt.label2;
+
+  // Preview slots — passport pages are portrait: shrink width so two fit vertically
+  const prevFront = document.getElementById('prev-front');
+  const prevBack  = document.getElementById('prev-back');
+  const slotWidth = isPassport ? '42%' : '100%';
+  [prevFront, prevBack].forEach(el => {
+    el.style.aspectRatio = ratio;
+    el.style.width = slotWidth;
+  });
+  document.getElementById('a4-inner').style.gap = isPassport ? '2.5%' : '4%';
+
+  // Hint text
+  document.getElementById('doc-hint').textContent = 'Preview updates live · ' + dt.hintText;
+
+  // Clear images — aspect ratio changed, old crops won't match
+  state.front = null; state.back = null;
+  updateSlot('front'); updateSlot('back');
+
+  // Refresh placeholder text
+  document.getElementById('placeholder-front-text').textContent = dt.label1 + (isPassport ? ' page' : ' side') + ' not captured';
+  document.getElementById('placeholder-back-text').textContent  = dt.label2 + (isPassport ? ' page' : ' side') + ' not captured';
+
   updatePreview(); updateStatus();
 }
 
@@ -1286,9 +1380,12 @@ function updateAngle(el) {
 
 function updatePreview() {
   const bw = document.getElementById('bw-toggle').checked;
+  const dt = getDocType();
+  const suffix = state.docType === 'passport' ? ' PAGE' : ' SIDE';
+
   document.getElementById('a4-preview').classList.toggle('bw', bw);
-  document.getElementById('prev-front').innerHTML = state.front ? `<img src="${state.front}" alt="front">` : 'FRONT SIDE';
-  document.getElementById('prev-back').innerHTML  = state.back  ? `<img src="${state.back}"  alt="back">`  : 'BACK SIDE';
+  document.getElementById('prev-front').innerHTML = state.front ? `<img src="${state.front}" alt="front">` : dt.label1 + suffix;
+  document.getElementById('prev-back').innerHTML  = state.back  ? `<img src="${state.back}"  alt="back">`  : dt.label2 + suffix;
 
   const text = document.getElementById('stamp-text').value.trim();
   const angle = document.getElementById('stamp-angle').value;
@@ -1307,12 +1404,20 @@ function updatePreview() {
 }
 
 function updateStatus() {
-  const both = state.front && state.back;
-  const one  = state.front || state.back;
-  const row  = document.getElementById('status-row');
-  if (both) row.innerHTML = `<div class="status-pill ok"><div class="status-dot"></div>Both sides captured — ready to export</div>`;
-  else if (one) row.innerHTML = `<div class="status-pill warn"><div class="status-dot"></div>Capture the other side to complete</div>`;
-  else row.innerHTML = '';
+  const isPassport = state.docType === 'passport';
+  // Passport: photo page (front) is sufficient; VISA page is optional
+  const ready = isPassport ? !!state.front : !!(state.front && state.back);
+  const any   = !!(state.front || state.back);
+  const row   = document.getElementById('status-row');
+  if (ready) {
+    const msg = isPassport ? 'Photo page captured — ready to export' : 'Both sides captured — ready to export';
+    row.innerHTML = `<div class="status-pill ok"><div class="status-dot"></div>${msg}</div>`;
+  } else if (any) {
+    const msg = isPassport ? 'Capture the photo page to complete' : 'Capture the other side to complete';
+    row.innerHTML = `<div class="status-pill warn"><div class="status-dot"></div>${msg}</div>`;
+  } else {
+    row.innerHTML = '';
+  }
 }
 
 /* ══════════════════════════════════════════════
@@ -1326,21 +1431,31 @@ async function downloadPDF() {
     const bw = document.getElementById('bw-toggle').checked;
     const text = document.getElementById('stamp-text').value.trim();
     const angle = parseFloat(document.getElementById('stamp-angle').value);
+    const isPassport = state.docType === 'passport';
 
     // A4 at 300 dpi
     const W = 2480, H = 3508;
     const PPM = 300 / 25.4; // pixels per mm
 
-    // Actual ID card size (ISO/IEC 7810 ID-1): 85.6 × 54 mm
-    const CARD_W = Math.round(85.6 * PPM); // 1011 px
-    const CARD_H = Math.round(54   * PPM); // 638 px
-    const CARD_X = Math.round((W - CARD_W) / 2); // centered horizontally
+    let CARD_W, CARD_H, CARD_X, y1, y2;
 
-    // Vertical: center the two cards as a group with a 15 mm gap
-    const GAP = Math.round(15 * PPM);
+    if (isPassport) {
+      // ICAO Doc 9303 ID-3: 88 mm × 125 mm (portrait biographical page)
+      CARD_W = Math.round(88  * PPM); // 1039 px
+      CARD_H = Math.round(125 * PPM); // 1476 px
+    } else {
+      // ISO/IEC 7810 ID-1: 85.6 mm × 54 mm
+      CARD_W = Math.round(85.6 * PPM); // 1011 px
+      CARD_H = Math.round(54   * PPM); // 638 px
+    }
+
+    CARD_X = Math.round((W - CARD_W) / 2); // centred horizontally
+
+    // Vertical: centre both pages/cards as a group with a 15 mm gap
+    const GAP = Math.round(15 * PPM); // 177 px
     const totalH = CARD_H * 2 + GAP;
-    const y1 = Math.round((H - totalH) / 2);
-    const y2 = y1 + CARD_H + GAP;
+    y1 = Math.round((H - totalH) / 2);
+    y2 = y1 + CARD_H + GAP;
 
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
@@ -1358,7 +1473,7 @@ async function downloadPDF() {
       }
       const img = new Image();
       img.onload = () => {
-        // Fit image into the card rect (no cropping — image is already cropped to card)
+        // Fit image into the card rect (no cropping — image is already cropped)
         const s = Math.min(CARD_W / img.width, CARD_H / img.height);
         const dW = img.width * s, dH = img.height * s;
         ctx.save(); ctx.beginPath(); ctx.rect(CARD_X, y, CARD_W, CARD_H); ctx.clip();
@@ -1372,13 +1487,17 @@ async function downloadPDF() {
     await drawCard(state.back,  y2);
 
     // Labels
+    const dt = getDocType();
     const drawLabel = (lbl, isBack, y) => {
+      ctx.font = '500 22px monospace';
+      const measW = Math.round(ctx.measureText(lbl).width) + 28;
       ctx.fillStyle = isBack ? '#c0392b' : '#0f0f0f';
-      ctx.fillRect(CARD_X+18, y+18, isBack ? 88 : 100, 38);
-      ctx.fillStyle = '#fff'; ctx.font = '500 22px monospace'; ctx.textAlign = 'left';
-      ctx.fillText(lbl, CARD_X+26, y+43);
+      ctx.fillRect(CARD_X + 18, y + 18, measW, 38);
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'left';
+      ctx.fillText(lbl, CARD_X + 26, y + 43);
     };
-    drawLabel('FRONT', false, y1); drawLabel('BACK', true, y2);
+    drawLabel(dt.label1, false, y1);
+    drawLabel(dt.label2, true,  y2);
 
     // Stamp
     if (text) {
@@ -1402,7 +1521,8 @@ async function downloadPDF() {
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
     pdf.addImage(canvas.toDataURL('image/jpeg', 0.94), 'JPEG', 0, 0, 210, 297);
-    pdf.save('id-card-document.pdf');
+    const filename = isPassport ? 'passport-document.pdf' : 'id-card-document.pdf';
+    pdf.save(filename);
   } catch(err) {
     alert('PDF error: ' + err.message); console.error(err);
   } finally {
