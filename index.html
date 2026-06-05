@@ -857,11 +857,17 @@ let facingMode = 'environment'; // rear camera
 let torchOn = false;
 let torchTrack = null;
 
-const STEADY_FRAMES_NEEDED = 20;   // ~1s at 20fps analysis
+const BURST_TRIGGER_FRAMES = 10;   // ~0.5s at 20fps — card must be stable before burst starts
+const BURST_DURATION_MS    = 2000; // collect frames for 2 s, then pick sharpest
 const SHARP_THRESHOLD      = 45;   // Laplacian variance — raised to reduce false triggers
 const BRIGHT_MIN           = 40;   // average brightness minimum
 const BRIGHT_MAX           = 225;  // avoid over-exposure
 const CARD_COVERAGE_MIN    = 0.55; // fraction of viewfinder grid cells needing edge activity
+
+let burstActive    = false;
+let burstStartTime = 0;
+let bestBurstSharp = 0;
+let bestBurstFrame = null; // canvas snapshot of sharpest frame seen so far
 
 const video      = document.getElementById('cam-video');
 const vfCanvas   = document.getElementById('vf-canvas');
@@ -1150,7 +1156,11 @@ function findCardEdges(canvas) {
 }
 
 function resetProgress() {
-  steadyCount = 0;
+  steadyCount    = 0;
+  burstActive    = false;
+  burstStartTime = 0;
+  bestBurstSharp = 0;
+  bestBurstFrame = null;
   shutterBtn.classList.remove('captured');
 }
 
@@ -1173,35 +1183,77 @@ function startAnalysis() {
     if (frameCount % 3 !== 0) { drawViewfinder(0, 128, false); return; }
 
     const { sharpness, brightness, cardCoverage } = computeSharpness(video.videoWidth, video.videoHeight);
-    const normalSharp = Math.min(100, (sharpness / SHARP_THRESHOLD) * 60);
-    const brightOk = brightness >= BRIGHT_MIN && brightness <= BRIGHT_MAX;
-    const sharpOk  = sharpness >= SHARP_THRESHOLD;
-    const cardOk   = cardCoverage >= CARD_COVERAGE_MIN;
-    const ok = sharpOk && brightOk && cardOk && !captured;
+    const brightOk    = brightness >= BRIGHT_MIN && brightness <= BRIGHT_MAX;
+    const cardOk      = cardCoverage >= CARD_COVERAGE_MIN;
+    const cardInFrame = brightOk && cardOk && !captured;
 
-    // Update UI
-    sharpFill.style.height = normalSharp + '%';
-    sharpFill.style.background = sharpOk ? '#27ae60' : sharpness > SHARP_THRESHOLD * 0.5 ? '#e67e22' : '#c0392b';
-    drawViewfinder(sharpness, brightness, ok);
-
-    if (!brightOk) {
-      camHint.textContent = brightness < BRIGHT_MIN ? '⚠ Too dark — find better light' : '⚠ Too bright — reduce glare';
-    } else if (!cardOk) {
-      camHint.textContent = 'Place document flat within the frame';
-    } else if (!sharpOk) {
-      camHint.textContent = 'Hold steady · Move closer or adjust angle';
+    // Progress bar: burst countdown while collecting, live sharpness quality otherwise
+    if (burstActive) {
+      const elapsed  = performance.now() - burstStartTime;
+      const progress = Math.min(1, elapsed / BURST_DURATION_MS);
+      sharpFill.style.height     = (progress * 100) + '%';
+      sharpFill.style.background = '#27ae60';
     } else {
-      camHint.textContent = steadyCount < 5 ? 'Good — keep holding…' : 'Almost there…';
+      const normalSharp = Math.min(100, (sharpness / SHARP_THRESHOLD) * 60);
+      sharpFill.style.height     = normalSharp + '%';
+      sharpFill.style.background = sharpness >= SHARP_THRESHOLD ? '#27ae60'
+                                 : sharpness > SHARP_THRESHOLD * 0.5 ? '#e67e22' : '#c0392b';
     }
+    drawViewfinder(sharpness, brightness, burstActive || (cardInFrame && sharpness >= SHARP_THRESHOLD));
 
-    if (ok) {
+    if (cardInFrame) {
       steadyCount++;
-      if (steadyCount >= STEADY_FRAMES_NEEDED && !captured) {
-        captured = true;
-        doCapture();
+
+      // Start burst once card has been stably in-frame for BURST_TRIGGER_FRAMES
+      if (!burstActive && steadyCount >= BURST_TRIGGER_FRAMES) {
+        burstActive    = true;
+        burstStartTime = performance.now();
+        bestBurstSharp = 0;
+        bestBurstFrame = null;
+      }
+
+      if (burstActive) {
+        // Continuously update best frame whenever a sharper one appears
+        if (sharpness > bestBurstSharp) {
+          bestBurstSharp = sharpness;
+          const snap = document.createElement('canvas');
+          snap.width  = video.videoWidth;
+          snap.height = video.videoHeight;
+          snap.getContext('2d').drawImage(video, 0, 0);
+          bestBurstFrame = snap;
+        }
+
+        const elapsed = performance.now() - burstStartTime;
+        if (elapsed < BURST_DURATION_MS * 0.4) {
+          camHint.textContent = 'Hold steady — scanning frames…';
+        } else if (elapsed < BURST_DURATION_MS * 0.75) {
+          camHint.textContent = 'Selecting sharpest frame…';
+        } else {
+          camHint.textContent = 'Almost ready…';
+        }
+
+        if (elapsed >= BURST_DURATION_MS && !captured) {
+          captured = true;
+          doCapture(bestBurstFrame);
+        }
+      } else {
+        camHint.textContent = 'Hold steady…';
       }
     } else {
+      // Card left frame or lighting changed — cancel burst and reset
+      if (burstActive) {
+        burstActive    = false;
+        burstStartTime = 0;
+        bestBurstSharp = 0;
+        bestBurstFrame = null;
+      }
       if (steadyCount > 0) steadyCount = Math.max(0, steadyCount - 2);
+
+      if (!brightOk) {
+        camHint.textContent = brightness < BRIGHT_MIN ? '⚠ Too dark — find better light' : '⚠ Too bright — reduce glare';
+      } else {
+        camHint.textContent = 'Place document flat within the frame';
+      }
     }
   }
   loop();
@@ -1211,10 +1263,11 @@ function startAnalysis() {
 function manualCapture() {
   if (captured || video.readyState < 2) return;
   captured = true;
-  doCapture();
+  // Prefer the best burst frame collected so far; fall back to current frame
+  doCapture(bestBurstFrame);
 }
 
-function doCapture() {
+function doCapture(frameCanvas) {
   shutterBtn.classList.add('captured');
   camHint.textContent = '✓ Captured — adjust & confirm';
 
@@ -1223,11 +1276,14 @@ function doCapture() {
   void flash.offsetWidth;
   flash.classList.add('go');
 
-  // Draw full-res frame
-  const cap = document.createElement('canvas');
-  cap.width = video.videoWidth;
-  cap.height = video.videoHeight;
-  cap.getContext('2d').drawImage(video, 0, 0);
+  // Use the best burst frame, or fall back to current video frame (manual capture)
+  let cap = frameCanvas;
+  if (!cap) {
+    cap = document.createElement('canvas');
+    cap.width  = video.videoWidth;
+    cap.height = video.videoHeight;
+    cap.getContext('2d').drawImage(video, 0, 0);
+  }
 
   // Map vfBox from display coords to video pixel coords
   const rect = video.getBoundingClientRect();
