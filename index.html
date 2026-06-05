@@ -384,10 +384,10 @@ const DOC_TYPES = {
     camSuffix: 'SIDE',
   },
   passport: {
-    w: 88, h: 125,
-    label1: 'PHOTO', label2: 'VISA',
+    w: 125, h: 88,  // each page captured in landscape (passport open flat)
+    label1: 'SIGNATURE', label2: 'PHOTO',
     title: 'Passport',
-    hintText: 'PDF renders passport pages at actual 88×125 mm size',
+    hintText: 'PDF renders open passport spread · two pages joined, 125×88 mm each at true size',
     camSuffix: 'PAGE',
   },
 };
@@ -949,8 +949,8 @@ function drawViewfinder(sharp, bright, ok) {
   const padding = Math.min(W, H) * 0.06;
   let boxW = W - padding * 2;
   let boxH = boxW / cardAspect;
-  // Portrait documents (passport) need more vertical room
-  const maxBoxH = H * (cardAspect < 1 ? 0.72 : 0.60);
+  // Limit box height to a safe fraction of screen height (same for landscape IC and passport)
+  const maxBoxH = H * 0.60;
   if (boxH > maxBoxH) { boxH = maxBoxH; boxW = boxH * cardAspect; }
   const boxX = (W - boxW) / 2;
   const boxY = (H - boxH) / 2;
@@ -1345,15 +1345,15 @@ function switchDocType(type) {
   document.getElementById('gallery-label-front').textContent = dt.label1;
   document.getElementById('gallery-label-back').textContent = dt.label2;
 
-  // Preview slots — passport pages are portrait: shrink width so two fit vertically
+  // Preview slots — landscape passport pages fill full width; gap removed so pages touch
   const prevFront = document.getElementById('prev-front');
   const prevBack  = document.getElementById('prev-back');
-  const slotWidth = isPassport ? '42%' : '100%';
   [prevFront, prevBack].forEach(el => {
     el.style.aspectRatio = ratio;
-    el.style.width = slotWidth;
+    el.style.width = '100%';
   });
-  document.getElementById('a4-inner').style.gap = isPassport ? '2.5%' : '4%';
+  // Passport: zero gap so the two pages merge into a seamless open-spread view
+  document.getElementById('a4-inner').style.gap = isPassport ? '0' : '4%';
 
   // Hint text
   document.getElementById('doc-hint').textContent = 'Preview updates live · ' + dt.hintText;
@@ -1440,9 +1440,10 @@ async function downloadPDF() {
     let CARD_W, CARD_H, CARD_X, y1, y2;
 
     if (isPassport) {
-      // ICAO Doc 9303 ID-3: 88 mm × 125 mm (portrait biographical page)
-      CARD_W = Math.round(88  * PPM); // 1039 px
-      CARD_H = Math.round(125 * PPM); // 1476 px
+      // ICAO Doc 9303 ID-3 open spread: each page 125 mm wide × 88 mm tall (landscape).
+      // Two pages joined without gap = 125 mm × 176 mm total — centred on A4.
+      CARD_W = Math.round(125 * PPM); // 1476 px  (≈ 42.5 mm margins each side on A4)
+      CARD_H = Math.round(88  * PPM); // 1039 px  (≈ 60.5 mm margins top/bottom on A4)
     } else {
       // ISO/IEC 7810 ID-1: 85.6 mm × 54 mm
       CARD_W = Math.round(85.6 * PPM); // 1011 px
@@ -1451,8 +1452,10 @@ async function downloadPDF() {
 
     CARD_X = Math.round((W - CARD_W) / 2); // centred horizontally
 
-    // Vertical: centre both pages/cards as a group with a 15 mm gap
-    const GAP = Math.round(15 * PPM); // 177 px
+    // Vertical: centre both pages/cards as a group
+    // Passport: no gap (pages touch, forming seamless open-spread)
+    // IC card: 15 mm gap between front and back
+    const GAP = isPassport ? 0 : Math.round(15 * PPM); // 0 or 177 px
     const totalH = CARD_H * 2 + GAP;
     y1 = Math.round((H - totalH) / 2);
     y2 = y1 + CARD_H + GAP;
@@ -1485,6 +1488,18 @@ async function downloadPDF() {
 
     await drawCard(state.front, y1);
     await drawCard(state.back,  y2);
+
+    // Passport: draw a hairline crease where the two pages meet (spine of open passport)
+    if (isPassport) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(CARD_X, y2);
+      ctx.lineTo(CARD_X + CARD_W, y2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Labels
     const dt = getDocType();
