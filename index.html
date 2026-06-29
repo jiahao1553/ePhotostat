@@ -3,7 +3,56 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>ID &amp; Passport Document Maker</title>
+<title>ID Scanner — Scan ID Cards & Passports to PDF in Your Browser</title>
+<meta name="description" content="ID Scanner turns your phone camera into a free ID card and passport scanner. Auto-crop, straighten, watermark, and export a print-ready A4 PDF — entirely in your browser, no uploads, no server.">
+<meta name="keywords" content="ID scanner, ID card scanner, passport scanner, scan ID online, ID to PDF, document scanner, NRIC scanner, IC scanner, free document scanner, online passport scanner">
+<meta name="author" content="ID Scanner">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://example.com/">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="ID Scanner — Scan ID Cards & Passports to PDF">
+<meta property="og:description" content="Free browser-based ID card and passport scanner. Auto-crop, straighten, watermark, and export a print-ready A4 PDF — nothing ever leaves your device.">
+<meta property="og:url" content="https://example.com/">
+<meta property="og:site_name" content="ID Scanner">
+<meta property="og:image" content="https://example.com/og-image.png">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ID Scanner — Scan ID Cards & Passports to PDF">
+<meta name="twitter:description" content="Free browser-based ID card and passport scanner. Auto-crop, straighten, watermark, and export a print-ready A4 PDF — nothing ever leaves your device.">
+<meta name="twitter:image" content="https://example.com/og-image.png">
+
+<!-- Structured data for search engines & AI/LLM crawlers -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "ID Scanner",
+  "alternateName": "ID Card & Passport Scanner",
+  "url": "https://example.com/",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Any (runs in browser)",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "description": "ID Scanner is a free, privacy-first browser app that scans ID cards and passports using your phone camera, auto-crops and straightens the image, applies a watermark, and exports a print-ready A4 PDF. No uploads, no server, no account required.",
+  "featureList": [
+    "Camera-based ID card and passport scanning",
+    "Automatic edge detection and cropping",
+    "Perspective correction for skewed photos",
+    "Custom watermark text and angle",
+    "Background removal",
+    "A4 PDF export at true ISO 7810 card size",
+    "Black & white export mode"
+  ],
+  "browserRequirements": "Requires JavaScript and a modern browser with camera access",
+  "isAccessibleForFree": true
+}
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,300&display=swap');
@@ -191,6 +240,10 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 </head>
 <body>
 
+<noscript>
+  <p>ID Scanner requires JavaScript. It's a free, privacy-first tool that scans ID cards and passports with your camera, then exports a print-ready A4 PDF — entirely in your browser, with nothing uploaded to a server. Please enable JavaScript to use it.</p>
+</noscript>
+
 <div id="progress-overlay"><div class="spinner"></div><span>Generating PDF…</span></div>
 
 <!-- ═══ CROP MODAL ═══ -->
@@ -248,7 +301,7 @@ input[type=text]:focus{border-color:var(--accent);background:#fff;}
 <!-- ═══ HEADER ═══ -->
 <header>
   <div class="badge">GOV</div>
-  <h1>ID &amp; Passport Document Maker</h1>
+  <h1>ID Scanner</h1>
   <span class="sub">AUTO · LOCAL · PDF</span>
 </header>
 

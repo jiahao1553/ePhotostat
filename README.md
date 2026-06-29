@@ -1,6 +1,6 @@
-# ID Card Document Maker
+# ID Scanner
 
-> A single-file web app that scans, crops, and packages your ID card (front + back) into a watermarked A4 PDF — entirely in your browser, zero uploads.
+> A single-file web app that scans, crops, and packages your ID card or passport (front + back) into a watermarked A4 PDF — entirely in your browser, zero uploads.
 
 ---
 
@@ -61,6 +61,17 @@ npx wrangler pages deploy .
 You get a private URL you can bookmark on your phone.
 
 ---
+
+## SEO / AI search
+
+The app ships with the basics for discoverability:
+
+- Descriptive `<title>`, meta description, and keywords
+- Open Graph and Twitter card tags for link previews
+- `WebApplication` JSON-LD structured data so search engines and AI/LLM crawlers can understand what the tool does
+- `robots.txt` and `sitemap.xml`
+
+If you deploy your own copy, replace the `https://example.com/` placeholders in `index.html`, `robots.txt`, and `sitemap.xml` with your real domain, and add an `og-image.png` (1200×630) for link preview cards.
 
 ## Tech
 
