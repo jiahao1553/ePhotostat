@@ -71,7 +71,9 @@ The app ships with the basics for discoverability:
 - `WebApplication` JSON-LD structured data so search engines and AI/LLM crawlers can understand what the tool does
 - `robots.txt` and `sitemap.xml`
 
-If you deploy your own copy, replace the `https://example.com/` placeholders in `index.html`, `robots.txt`, and `sitemap.xml` with your real domain, and add an `og-image.png` (1200×630) for link preview cards.
+**GitHub Pages deploys are automatic.** `.github/workflows/deploy-pages.yml` builds the site on every push to `main`, swaps the `https://example.com/` placeholder for the real `https://<owner>.github.io/<repo>/` Pages URL, then publishes it — no manual editing needed.
+
+If you deploy elsewhere (Cloudflare Pages, a custom domain, etc.), replace the `https://example.com/` placeholders in `index.html`, `robots.txt`, and `sitemap.xml` with your real domain yourself, and add an `og-image.png` (1200×630) for link preview cards.
 
 ## Tech
 
