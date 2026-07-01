@@ -1,6 +1,6 @@
-# ID Scanner
+# ePhotostat
 
-> A single-file web app that scans, crops, and packages your ID card or passport (front + back) into a watermarked A4 PDF — entirely in your browser, zero uploads.
+> Your digital photostat shop — scan your IC, NRIC or passport (front + back), add a watermark, and export a print-ready A4 PDF entirely in your browser, zero uploads.
 
 ---
 
